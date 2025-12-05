@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>K歌聖誕禮物趴 - 搶麥入場！</title>
+    <!-- 載入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 載入 Lucide Icons (用於小圖示) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- 載入 高級襯線字體：Playfair Display (用於標題) -->
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap" rel="stylesheet">
+    
+    <!-- 載入 Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, onSnapshot, collection, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Set Firebase log level
+        setLogLevel('debug');
+
+        // --- Firebase environment variables initialization ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+
+        let app, db, auth, userId = null;
+
+        // Mount necessary objects to global Window for JS access
+        window.firebase = {
+            init: async function() {
+                try {
+                    if (Object.keys(firebaseConfig).length === 0) {
+                        console.error("Firebase config is missing. Data persistence will not work.");
+                        return;
+                    }
+
+                    app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
+                    window.db = db; // Mount Firestore instance
+
+                    // Authentication flow: use Custom Token first, otherwise anonymous sign-in
+                    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+
+                    onAuthStateChanged(auth, (user) => {
+                        if (user) {
+                            userId = user.uid;
+                            window.userId = userId;
+                            console.log("Firebase Auth Ready. User ID:", userId);
+                            // Auth ready, initialize app logic
+                            window.app.initLogic();
+                        } else {
+                            console.warn("User is not signed in.");
+                            // If sign-in fails, still try to initialize logic
+                            window.app.initLogic();
+                        }
+                    });
+
+                } catch (error) {
+                    console.error("Firebase Initialization Failed:", error);
+                }
+            },
+            saveRegistration: async function(data) {
+                if (!db || !userId) {
+                    throw new Error("Firestore not initialized or user not authenticated.");
+                }
+
+                const collectionPath = `artifacts/${appId}/public/data/party_registrations`;
+                console.log("Saving data to:", collectionPath);
+
+                // Sanitize data before saving (remove API key info)
+                const sanitizedData = {
+                    ...data,
+                    timestamp: new Date().toISOString(),
+                    user_id: userId
+                };
+
+                try {
+                    const docRef = await addDoc(collection(db, collectionPath), sanitizedData);
+                    console.log("Document written with ID: ", docRef.id);
+                    return docRef.id;
+                } catch (e) {
+                    console.error("Error adding document: ", e);
+                    throw e;
+                }
+            }
+        };
+
+        // Start Firebase initialization on window load
+        window.onload = () => {
+            window.firebase.init();
+        };
+
+    </script>
+    <style>
+        /* ------------------------------------- */
+        /* 1. 定義奢華聖誕配色 (Luxury Jewel Tones) */
+        /* ------------------------------------- */
+        :root {
+            --color-bg-main: #121212; /* 極深木炭 */
+            --color-bg-secondary: #332619; /* 暖調深棕 */
+            --color-text-cream: #FAF9F6; /* 奶油白 */
+            --color-gold-luxury: #D4AF37; /* 奢華暖金 (Accent A) */
+            --color-brass-antique: #A9853C; /* 復古黃銅 (Accent B) */
+            --color-danger: #930018; /* 用於必填星號或錯誤訊息 */
+        }
+
+        /* 設置字體與全域文字顏色 */
+        body {
+            /* 中文及內文優先使用易讀的 Noto Sans TC / Inter */
+            font-family: 'Noto Sans TC', 'Inter', system-ui, sans-serif;
+            color: var(--color-text-cream);
+        }
+
+        /* 高級襯線字體樣式 (用於標題) */
+        .font-luxury-heading {
+            /* 使用 Playfair Display 這種經典襯線字體來營造高級感 */
+            font-family: 'Playfair Display', serif;
+            font-weight: 700; /* 加粗以強調 */
+        }
+
+        /* ------------------------------------- */
+        /* 2. 背景與閃爍星星動畫 (Twinkling Stars) */
+        /* ------------------------------------- */
+        .christmas-bg {
+            /* Base color is deep charcoal */
+            background-color: var(--color-bg-main); 
+            /* Soft gradient mix with deep brown for texture */
+            background: radial-gradient(circle at top left, var(--color-bg-secondary) 0%, transparent 70%),
+                        radial-gradient(circle at bottom right, var(--color-bg-secondary) 0%, transparent 70%),
+                        linear-gradient(135deg, var(--color-bg-main) 0%, #000000 100%); 
+            background-blend-mode: overlay, overlay, normal;
+            background-size: 400% 400%;
+            animation: backgroundShift 20s ease infinite;
+            overflow: hidden;
+            position: relative;
+        }
+
+        @keyframes backgroundShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Twinkling stars style */
+        .star-twinkle {
+            position: absolute;
+            width: 4px; /* Slightly increased size */
+            height: 4px; /* Slightly increased size */
+            border-radius: 50%;
+            background: var(--color-text-cream); /* Cream white for star light */
+            opacity: 0; /* Default hidden */
+            box-shadow: 0 0 5px var(--color-text-cream); /* Subtle glow */
+            filter: blur(0.5px); /* Slight blur for realism */
+            pointer-events: none;
+            /* Different animation delay and duration for each star */
+            animation: twinkle 1.2s infinite alternate ease-in-out; 
+        }
+
+        /* Twinkle animation: change size and opacity */
+        @keyframes twinkle {
+            0% { transform: scale(0.3); opacity: 0; } 
+            50% { transform: scale(1.5); opacity: 1; } 
+            100% { transform: scale(0.6); opacity: 0.5; } 
+        }
+
+        /* ------------------------------------- */
+        /* 3. 玻璃擬態 (Glassmorphism) 效果 */
+        /* ------------------------------------- */
+        .glass-card {
+            background-color: rgba(255, 255, 255, 0.08); 
+            backdrop-filter: blur(35px); 
+            border: 1px solid rgba(255, 255, 255, 0.1); 
+            /* Deep external shadow + subtle internal light glow */
+            box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.7), 
+                        inset 0 0 10px rgba(255, 255, 255, 0.05);
+            transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        /* Glass card Hover effect */
+        .glass-card:hover {
+            /* Stronger external glow and golden border */
+            box-shadow: 0 20px 80px 0 rgba(0, 0, 0, 0.95), 
+                        0 0 20px 0 var(--color-gold-luxury); 
+            border: 1px solid var(--color-gold-luxury);
+            transform: translateY(-2px); 
+        }
+        
+        /* ------------------------------------- */
+        /* 4. 輸入框 (Input) 互動效果 */
+        /* ------------------------------------- */
+        .glass-input {
+            background: none;
+            border: none;
+            border-bottom: 2px solid var(--color-brass-antique); /* Antique brass underline */
+            color: var(--color-text-cream);
+            transition: border-bottom-color 0.4s ease, box-shadow 0.4s ease;
+        }
+
+        /* Focus: Antique brass -> Luxury gold glow */
+        .glass-input:focus {
+            outline: none;
+            border-bottom-color: var(--color-gold-luxury);
+            box-shadow: 0 1px 0 0 var(--color-gold-luxury), 0 0 5px var(--color-gold-luxury);
+        }
+        
+        /* Checkbox/Radio style */
+        .glass-check {
+            accent-color: var(--color-gold-luxury);
+            border-color: var(--color-brass-antique);
+        }
+
+        /* ------------------------------------- */
+        /* 5. CTA Button (Luxury Gold Background) */
+        /* ------------------------------------- */
+        .cta-button {
+            /* Metallic gradient background */
+            background: linear-gradient(145deg, var(--color-gold-luxury) 0%, var(--color-brass-antique) 100%);
+            border: 3px solid var(--color-gold-luxury); 
+            
+            /* Engraved text effect */
+            color: var(--color-bg-main);
+            text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.2); 
+            
+            /* Initial shadow for depth */
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+            font-weight: 800; 
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        .cta-button:hover {
+            transform: translateY(-3px) scale(1.02); 
+            /* Stronger external gold glow */
+            box-shadow: 0 10px 30px rgba(212, 175, 55, 0.7), 0 0 30px var(--color-gold-luxury); 
+            color: var(--color-bg-main);
+        }
+
+    </style>
+    <script>
+        // Set Tailwind config to use CSS variables
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'charcoal': 'var(--color-bg-main)',
+                        'deep-brown': 'var(--color-bg-secondary)',
+                        'cream-white': 'var(--color-text-cream)',
+                        'luxury-gold': 'var(--color-gold-luxury)',
+                        'antique-brass': 'var(--color-brass-antique)',
+                        'danger-red': 'var(--color-danger)',
+                    },
+                    boxShadow: {
+                        'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
+                    },
+                }
+            }
+        }
+    </script>
+</head>
+<body class="min-h-screen christmas-bg flex flex-col items-center p-4 sm:p-8">
+
+    <!-- Twinkling Stars Background Animation (40 stars) -->
+    <div class="star-twinkle" style="top: 6%; left: 82%; animation-delay: 0.1s; animation-duration: 2.5s;"></div>
+    <div class="star-twinkle" style="top: 16%; left: 3%; animation-delay: 1.2s; animation-duration: 1.8s;"></div>
+    <div class="star-twinkle" style="top: 92%; left: 96%; animation-delay: 0.5s; animation-duration: 3.0s;"></div>
+    <div class="star-twinkle" style="top: 51%; left: 31%; animation-delay: 2.1s; animation-duration: 2.0s;"></div>
+    <div class="star-twinkle" style="top: 76%; left: 9%; animation-delay: 0.8s; animation-duration: 1.4s;"></div>
+    <div class="star-twinkle" style="top: 24%; left: 71%; animation-delay: 3.5s; animation-duration: 2.2s;"></div>
+    <div class="star-twinkle" style="top: 86%; left: 49%; animation-delay: 1.7s; animation-duration: 2.8s;"></div>
+    <div class="star-twinkle" style="top: 11%; left: 39%; animation-delay: 0.3s; animation-duration: 1.6s;"></div>
+    <div class="star-twinkle" style="top: 61%; left: 66%; animation-delay: 2.5s; animation-duration: 1.9s;"></div>
+    <div class="star-twinkle" style="top: 44%; left: 91%; animation-delay: 0.9s; animation-duration: 2.6s;"></div>
+    <div class="star-twinkle" style="top: 4%; left: 19%; animation-delay: 2.8s; animation-duration: 1.5s;"></div>
+    <div class="star-twinkle" style="top: 81%; left: 6%; animation-delay: 0.4s; animation-duration: 2.1s;"></div>
+    <div class="star-twinkle" style="top: 21%; left: 94%; animation-delay: 1.9s; animation-duration: 1.7s;"></div>
+    <div class="star-twinkle" style="top: 36%; left: 54%; animation-delay: 3.2s; animation-duration: 2.3s;"></div>
+    <div class="star-twinkle" style="top: 71%; left: 34%; animation-delay: 0.6s; animation-duration: 1.3s;"></div>
+    <div class="star-twinkle" style="top: 56%; left: 84%; animation-delay: 1.5s; animation-duration: 2.4s;"></div>
+    <div class="star-twinkle" style="top: 29%; left: 14%; animation-delay: 2.3s; animation-duration: 1.6s;"></div>
+    <div class="star-twinkle" style="top: 66%; left: 76%; animation-delay: 0.2s; animation-duration: 2.7s;"></div>
+    <div class="star-twinkle" style="top: 14%; left: 51%; animation-delay: 1.8s; animation-duration: 1.9s;"></div>
+    <div class="star-twinkle" style="top: 89%; left: 24%; animation-delay: 3.0s; animation-duration: 2.0s;"></div>
+    <div class="star-twinkle" style="top: 3%; left: 60%; animation-delay: 0.7s; animation-duration: 1.5s;"></div>
+    <div class="star-twinkle" style="top: 95%; left: 15%; animation-delay: 2.9s; animation-duration: 2.0s;"></div>
+    <div class="star-twinkle" style="top: 40%; left: 88%; animation-delay: 0.4s; animation-duration: 2.6s;"></div>
+    <div class="star-twinkle" style="top: 7%; left: 33%; animation-delay: 1.1s; animation-duration: 1.7s;"></div>
+    <div class="star-twinkle" style="top: 48%; left: 5%; animation-delay: 3.3s; animation-duration: 2.1s;"></div>
+    <div class="star-twinkle" style="top: 28%; left: 42%; animation-delay: 1.0s; animation-duration: 1.5s;"></div>
+    <div class="star-twinkle" style="top: 84%; left: 78%; animation-delay: 2.2s; animation-duration: 2.9s;"></div>
+    <div class="star-twinkle" style="top: 18%; left: 23%; animation-delay: 0.0s; animation-duration: 1.3s;"></div>
+    <div class="star-twinkle" style="top: 73%; left: 68%; animation-delay: 1.6s; animation-duration: 2.5s;"></div>
+    <div class="star-twinkle" style="top: 58%; left: 98%; animation-delay: 3.4s; animation-duration: 1.9s;"></div>
+    <div class="star-twinkle" style="top: 38%; left: 8%; animation-delay: 0.5s; animation-duration: 2.2s;"></div>
+    <div class="star-twinkle" style="top: 64%; left: 52%; animation-delay: 2.7s; animation-duration: 1.8s;"></div>
+    <div class="star-twinkle" style="top: 8%; left: 90%; animation-delay: 1.4s; animation-duration: 2.4s;"></div>
+    <div class="star-twinkle" style="top: 91%; left: 38%; animation-delay: 0.9s; animation-duration: 1.6s;"></div>
+    <div class="star-twinkle" style="top: 42%; left: 73%; animation-delay: 2.0s; animation-duration: 2.7s;"></div>
+    <div class="star-twinkle" style="top: 20%; left: 62%; animation-delay: 3.6s; animation-duration: 1.5s;"></div>
+    <div class="star-twinkle" style="top: 53%; left: 25%; animation-delay: 0.3s; animation-duration: 3.1s;"></div>
+    <div class="star-twinkle" style="top: 77%; left: 80%; animation-delay: 1.3s; animation-duration: 1.4s;"></div>
+    <div class="star-twinkle" style="top: 97%; left: 57%; animation-delay: 2.6s; animation-duration: 2.3s;"></div>
+    <div class="star-twinkle" style="top: 32%; left: 99%; animation-delay: 0.7s; animation-duration: 2.0s;"></div>
+
+
+    <!-- Main content container (RWD class optimization) -->
+    <!-- Max width adjusted: full width on mobile, max-w-lg on larger screens by default -->
+    <div id="main-content" class="w-full max-w-screen-md lg:max-w-lg my-auto py-8 px-6 glass-card rounded-2xl">
+        
+        <!-- Application state management -->
+        <script>
+            // Application state
+            const state = {
+                currentPage: 'home', // 'home', 'form', 'success'
+                formData: {
+                    paymentProof: '',
+                    name: '',
+                    contact: '',
+                    dressCodeConfirmed: false,
+                    ktvWish: '',
+                    diet_noBeef: false,
+                    diet_noAlcohol: false,
+                    diet_vegetarian: '', // 素食類型
+                    diet_other: ''
+                },
+                errorMessage: ''
+            };
+
+            // Helper function: Render icon
+            function renderIcon(name, classes = 'w-5 h-5 inline mr-2') {
+                // Icon uses luxury gold
+                return `<i data-lucide="${name}" class="${classes}" style="color:var(--color-gold-luxury);"></i>`;
+            }
+
+            // Helper function: Update page content
+            function updatePage() {
+                const contentDiv = document.getElementById('main-content');
+                contentDiv.innerHTML = '';
+                state.errorMessage = '';
+                
+                // Clear all dynamic max-width classes first
+                contentDiv.classList.remove('md:max-w-4xl', 'md:max-w-lg'); 
+
+                switch (state.currentPage) {
+                    case 'home':
+                        renderHome(contentDiv);
+                        break;
+                    case 'form':
+                        renderForm(contentDiv);
+                        break;
+                    case 'success':
+                        renderSuccess(contentDiv);
+                        break;
+                }
+                // Re-render Lucide icons
+                lucide.createIcons();
+            }
+
+            // --- Page rendering logic ---
+
+            // Hero Page (Home)
+            function renderHome(container) {
+                // RWD Enhancement: Use larger max-width for Home page layout on medium/large screens
+                container.classList.add('md:max-w-4xl', 'text-center');
+
+                container.innerHTML = `
+                    <!-- RWD Typography: text-4xl on mobile, 5xl on medium screens, 6xl on large screens -->
+                    <h1 class="font-luxury-heading text-4xl sm:text-5xl lg:text-6xl font-extrabold mb-4 pt-2" style="color:var(--color-gold-luxury); text-shadow: 1px 1px 10px rgba(0,0,0,1);">
+                        K歌聖誕禮物趴
+                    </h1>
+                    <!-- RWD Typography: text-lg on mobile, text-xl on larger screens -->
+                    <p class="text-lg sm:text-xl mb-8 text-cream-white">
+                        2025/12/19（五）19:00–23:00｜錢櫃中華新館
+                    </p>
+                    
+                    <!-- CTA Button -->
+                    <button id="cta-button" class="cta-button text-xl sm:text-2xl font-bold py-3 px-10 rounded-full mb-10 mx-auto" onclick="state.currentPage='form'; updatePage();">
+                        搶麥入場！
+                    </button>
+
+                    <!-- Party Info Area (RWD: single column on mobile, two columns on medium screens) -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-left text-cream-white mt-4">
+                        
+                        <!-- Rules Card -->
+                        <div class="p-4 glass-card rounded-xl">
+                            <!-- RWD Typography: text-base on mobile, text-lg on larger screens -->
+                            <h2 class="font-luxury-heading text-base sm:text-lg font-semibold mb-2" style="color:var(--color-gold-luxury);">
+                                ${renderIcon('user-check', 'w-4 h-4 inline mr-1')}名額與費用
+                            </h2>
+                            <p class="mb-2 text-sm sm:text-base">名額：8–12 位</p>
+                            <p class="text-sm sm:text-base">費用：NT$ 500 訂金 (活動後多退少補)</p>
+                            <p class="mt-2 text-xs sm:text-sm" style="color:var(--color-gold-luxury);">* 請先付款再填寫報名表。</p>
+                        </div>
+
+                        <!-- Gift and Dress Card -->
+                        <div class="p-4 glass-card rounded-xl">
+                            <!-- RWD Typography: text-base on mobile, text-lg on larger screens -->
+                            <h2 class="font-luxury-heading text-base sm:text-lg font-semibold mb-2" style="color:var(--color-gold-luxury);">
+                                ${renderIcon('gift', 'w-4 h-4 inline mr-1')}禮物與服裝
+                            </h2>
+                            <p class="mb-2 text-sm sm:text-base"><strong>Dress Code:</strong> 穿著<strong style="color:var(--color-gold-luxury);">紅</strong>或<strong style="color:var(--color-brass-antique);">綠</strong>元素。</p>
+                            <p class="text-sm sm:text-base"><strong>交換禮物:</strong> NT$ 500–800，實用性取向。</p>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Form Page (Form)
+            function renderForm(container) {
+                // RWD Enhancement: Revert to a smaller max width for forms
+                container.classList.add('md:max-w-lg');
+                
+                container.innerHTML = `
+                    <!-- RWD Typography: text-2xl on mobile, 3xl on larger screens -->
+                    <h2 class="font-luxury-heading text-2xl sm:text-3xl font-bold mb-6 text-center" style="color:var(--color-gold-luxury);">
+                        ${renderIcon('clipboard-list')}欲參加者，敬請填寫下方報名表
+                    </h2>
+                    ${state.errorMessage ? `<div class="p-3 mb-4 rounded-lg text-sm text-center" style="background-color:var(--color-danger); color: var(--color-text-cream);">${state.errorMessage}</div>` : ''}
+
+                    <form id="registration-form" onsubmit="event.preventDefault(); submitForm();">
+                        
+                        <!-- Step 1: Deposit Payment Card -->
+                        <div class="p-6 mb-8 rounded-xl glass-card border-2" style="border-color:var(--color-gold-luxury);">
+                            <!-- RWD Typography: text-lg on mobile, 2xl on larger screens -->
+                            <h3 class="font-luxury-heading text-lg sm:text-xl font-bold mb-4" style="color:var(--color-gold-luxury);">
+                                ${renderIcon('credit-card')}步驟一：預付活動訂金
+                            </h3>
+                            <div class="text-center mb-4">
+                                <!-- RWD Typography: 4xl on mobile, 5xl on larger screens -->
+                                <span class="font-luxury-heading text-4xl sm:text-5xl font-extrabold" style="color:var(--color-gold-luxury); text-shadow: 2px 2px 5px rgba(0,0,0,0.7);">
+                                    NT$ 500
+                                </span>
+                            </div>
+                            <p class="text-cream-white mb-2 text-sm">（請先完成付款，再填寫下方表單！）</p>
+                            <p class="text-xs sm:text-sm font-semibold mt-2" style="color:var(--color-gold-luxury);">
+                                👉 溫馨提示：訂金將於活動結束後依實際消費計算，採多退少補原則。
+                            </p>
+                            <!-- Payment info placeholder -->
+                            <p class="text-xs mt-3 text-cream-white/70">
+                                支付方式：LINE Pay / 銀行轉帳 (請向主辦人確認帳號資訊)
+                            </p>
+                        </div>
+
+                        <!-- Step 2: Registration Data -->
+                        <div class="space-y-6">
+                            <!-- RWD Typography: text-base on mobile, text-lg on larger screens -->
+                            <div class="font-luxury-heading text-base sm:text-lg font-semibold" style="color:var(--color-brass-antique);">
+                                ${renderIcon('user-circle')}報名者資料
+                            </div>
+                            
+                            <!-- Required Fields (Inputs are w-full by default, which is good for RWD) -->
+                            <div>
+                                <label for="paymentProof" class="block text-sm font-medium text-cream-white/80 mb-1">付款證明後五碼/暱稱 <span style="color:var(--color-danger);">*</span></label>
+                                <input type="text" id="paymentProof" name="paymentProof" value="${state.formData.paymentProof}" oninput="state.formData.paymentProof = this.value" class="glass-input w-full p-2" placeholder="請填寫轉帳後五碼或 LINE Pay 暱稱" required>
+                            </div>
+                            <div>
+                                <label for="name" class="block text-sm font-medium text-cream-white/80 mb-1">姓名/暱稱 <span style="color:var(--color-danger);">*</span></label>
+                                <input type="text" id="name" name="name" value="${state.formData.name}" oninput="state.formData.name = this.value" class="glass-input w-full p-2" placeholder="派對上希望被稱呼的名字" required>
+                            </div>
+                            <div>
+                                <label for="contact" class="block text-sm font-medium text-cream-white/80 mb-1">聯絡方式 (LINE ID/Instrange帳號) <span style="color:var(--color-danger);">*</span></label>
+                                <input type="text" id="contact" name="contact" value="${state.formData.contact}" oninput="state.formData.contact = this.value" class="glass-input w-full p-2" placeholder="方便主辦人聯繫的 LINE ID 或 IG 帳號" required>
+                            </div>
+
+                            <!-- Dress Code Confirmation -->
+                            <div class="flex items-center pt-2">
+                                <input type="checkbox" id="dressCodeConfirmed" name="dressCodeConfirmed" ${state.formData.dressCodeConfirmed ? 'checked' : ''} onchange="state.formData.dressCodeConfirmed = this.checked" class="glass-check w-4 h-4 mr-3 cursor-pointer">
+                                <label for="dressCodeConfirmed" class="text-sm font-medium" style="color:var(--color-gold-luxury);">
+                                    ${renderIcon('check-circle', 'w-4 h-4 inline mr-1')}我已確認並會遵守「紅或綠」服裝規定 <span style="color:var(--color-danger);">*</span>
+                                </label>
+                            </div>
+
+                            <hr class="border-t border-white/20 my-6">
+
+                            <!-- Optional: KTV Wish -->
+                            <div>
+                                <label for="ktvWish" class="block text-sm font-medium text-cream-white/80 mb-1">
+                                    ${renderIcon('music')} KTV 點歌許願 (選填)
+                                </label>
+                                <input type="text" id="ktvWish" name="ktvWish" value="${state.formData.ktvWish}" oninput="state.formData.ktvWish = this.value" class="glass-input w-full p-2" placeholder="想聽或想唱的歌曲名稱">
+                            </div>
+
+                            <!-- Optional: Dietary Preferences -->
+                            <div class="pt-2">
+                                <label class="block text-sm font-medium text-cream-white/80 mb-2 font-luxury-heading">
+                                    ${renderIcon('utensils')} 餐飲偏好 (請勾選，點餐會參考)
+                                </label>
+                                <div class="space-y-2">
+                                    <label class="flex items-center text-sm text-cream-white">
+                                        <input type="checkbox" name="diet" value="noBeef" ${state.formData.diet_noBeef ? 'checked' : ''} onchange="state.formData.diet_noBeef = this.checked" class="glass-check w-4 h-4 mr-2 cursor-pointer">
+                                        不吃牛
+                                    </label>
+                                    <label class="flex items-center text-sm text-cream-white">
+                                        <input type="checkbox" name="diet" value="noAlcohol" ${state.formData.diet_noAlcohol ? 'checked' : ''} onchange="state.formData.diet_noAlcohol = this.checked" class="glass-check w-4 h-4 mr-2 cursor-pointer">
+                                        不喝酒
+                                    </label>
+                                    <div class="ml-6">
+                                        <label for="diet_vegetarian" class="block text-sm font-medium text-cream-white/70 mb-1 mt-2">素食類型 (若為素食者)</label>
+                                        <input type="text" id="diet_vegetarian" name="diet_vegetarian" value="${state.formData.diet_vegetarian}" oninput="state.formData.diet_vegetarian = this.value" class="glass-input w-full p-2 text-xs" placeholder="例如：蛋奶素/鍋邊素/全素">
+                                    </div>
+                                    <div>
+                                        <label for="diet_other" class="block text-sm font-medium text-cream-white/70 mb-1 mt-2">其他過敏/禁忌 (開放欄位)</label>
+                                        <input type="text" id="diet_other" name="diet_other" value="${state.formData.diet_other}" oninput="state.formData.diet_other = this.value" class="glass-input w-full p-2 text-xs" placeholder="例如：花生過敏、不吃海鮮等">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <p class="text-xs text-center mt-6 mb-2 text-cream-white/70">
+                            （填寫完成後，請留意跳出的頁面，內含當天進場的 IG 群組連結喔！）
+                        </p>
+
+                        <!-- RWD Typography: text-lg on mobile, xl on larger screens -->
+                        <button type="submit" class="cta-button w-full text-lg sm:text-xl font-bold py-3 px-10 rounded-full mt-6">
+                            送出報名
+                        </button>
+                    </form>
+                `;
+            }
+
+            // Success Page (Success)
+            function renderSuccess(container) {
+                // RWD Enhancement: Revert to a smaller max width for focus
+                container.classList.add('md:max-w-lg');
+
+                // Use the new IG link
+                const igLink = "https://ig.me/j/AbZP3xD1ugaWGDMX/";
+
+                container.innerHTML = `
+                    <!-- RWD Typography: 3xl on mobile, 4xl on larger screens -->
+                    <h2 class="font-luxury-heading text-3xl sm:text-4xl font-extrabold mb-6" style="color:var(--color-gold-luxury); text-shadow: 2px 2px 5px rgba(0,0,0,0.7);">
+                        🎉 恭喜！搶麥入場成功！
+                    </h2>
+                    <p class="text-lg sm:text-xl mb-8 text-cream-white">
+                        您的名額已保留。我們非常期待與您在 KTV 狂歡！
+                    </p>
+
+                    <!-- IG Group CTA: RWD Typography: text-xl on mobile, 2xl on larger screens -->
+                    <a href="${igLink}" target="_blank" class="block text-xl sm:text-2xl font-bold py-4 px-10 rounded-full mb-10 mx-auto" style="background-color:var(--color-gold-luxury); color:var(--color-bg-main); border: 3px solid var(--color-brass-antique); transition: all 0.3s ease;">
+                        ${renderIcon('instagram', 'w-6 h-6 inline mr-3')}立即加入 IG 派對群組
+                    </a>
+                    <p class="text-sm text-cream-white/80 mb-8">
+                        （請務必加入群組，以便聯繫、發布包廂號碼及突發狀況通知。）
+                    </p>
+
+                    <!-- Location Info -->
+                    <div class="glass-card p-4 rounded-xl mb-8 text-left text-cream-white">
+                        <h3 class="font-luxury-heading text-lg font-semibold mb-3" style="color:var(--color-gold-luxury);">
+                            ${renderIcon('map-pin')}活動地點：錢櫃中華新館
+                        </h3>
+                        <!-- Map Embed (Responsive Aspect Ratio) -->
+                        <div class="aspect-w-16 aspect-h-9 w-full rounded-lg overflow-hidden">
+                            <iframe
+                              src="https://maps.google.com/?cid=14928216406343438233&hl=zh-TW&output=embed"
+                              width="100%"
+                              height="300"
+                              style="border:0; border-radius: 10px;"
+                              allowfullscreen=""
+                              loading="lazy"
+                              referrerpolicy="no-referrer-when-downgrade"
+                            ></iframe>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Form submission logic
+            async function submitForm() {
+                const form = document.getElementById('registration-form');
+                // Check if all required fields are filled and dress code is confirmed
+                if (!form.checkValidity() || !state.formData.dressCodeConfirmed) {
+                    state.errorMessage = '請填寫所有必填欄位並確認 Dress Code 規定！';
+                    updatePage();
+                    return;
+                }
+
+                try {
+                    // Clean and prepare data to be saved
+                    const dataToSave = {
+                        name: state.formData.name,
+                        contact: state.formData.contact,
+                        paymentProof: state.formData.paymentProof,
+                        dressCodeConfirmed: state.formData.dressCodeConfirmed,
+                        ktvWish: state.formData.ktvWish || '無',
+                        diet: {
+                            noBeef: state.formData.diet_noBeef,
+                            noAlcohol: state.formData.diet_noAlcohol,
+                            vegetarian: state.formData.diet_vegetarian || '無',
+                            other: state.formData.diet_other || '無'
+                        }
+                    };
+
+                    const submissionId = await window.firebase.saveRegistration(dataToSave);
+                    state.submissionId = submissionId;
+                    state.currentPage = 'success';
+                    updatePage();
+
+                } catch (error) {
+                    console.error("Submission failed:", error);
+                    state.errorMessage = '報名失敗，請檢查網路連線或稍後再試。';
+                    updatePage();
+                }
+            }
+
+            // Application initialization
+            window.app = {
+                initLogic: () => {
+                    updatePage();
+                }
+            };
+        </script>
+    </div>
+</body>
+</html>
