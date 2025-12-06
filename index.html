@@ -22,25 +22,34 @@
 
         // --- Firebase environment variables initialization ---
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        // Check if config exists and is a string before parsing
+        const configString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
+        let firebaseConfig = {};
+        try {
+            firebaseConfig = JSON.parse(configString);
+        } catch (e) {
+            console.error("Failed to parse firebase config:", e);
+        }
 
-        let app, db, auth, userId = null;
+        let app, db, auth, userId = 'N/A (Initializing...)';
 
         // Mount necessary objects to global Window for JS access
         window.firebase = {
             init: async function() {
-                try {
-                    if (Object.keys(firebaseConfig).length === 0) {
-                        console.error("Firebase config is missing. Data persistence will not work.");
-                        return;
-                    }
+                // If config is empty, we still proceed to show the UI
+                if (Object.keys(firebaseConfig).length === 0) {
+                    console.warn("Firebase config is missing. Data submission will be disabled.");
+                    window.app.initLogic(false); // Force UI render, submission disabled
+                    return;
+                }
 
+                try {
                     app = initializeApp(firebaseConfig);
                     db = getFirestore(app);
                     auth = getAuth(app);
                     window.db = db; // Mount Firestore instance
 
-                    // Authentication flow: use Custom Token first, otherwise anonymous sign-in
+                    // Authentication flow
                     const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
                     if (initialAuthToken) {
                         await signInWithCustomToken(auth, initialAuthToken);
@@ -54,31 +63,31 @@
                             window.userId = userId;
                             console.log("Firebase Auth Ready. User ID:", userId);
                             // Auth ready, initialize app logic
-                            window.app.initLogic();
+                            window.app.initLogic(true);
                         } else {
-                            console.warn("User is not signed in.");
-                            // If sign-in fails, still try to initialize logic
-                            window.app.initLogic();
+                            // Should not happen often if sign-in is successful
+                            console.warn("User is not signed in after auth attempt.");
+                            window.app.initLogic(false);
                         }
                     });
 
                 } catch (error) {
                     console.error("Firebase Initialization Failed:", error);
+                    window.app.initLogic(false); // Force UI render even on failure
                 }
             },
             saveRegistration: async function(data) {
-                if (!db || !userId) {
-                    throw new Error("Firestore not initialized or user not authenticated.");
+                if (!db || !window.userId) {
+                    throw new Error("Firestore not initialized or user not authenticated. Submission aborted.");
                 }
 
                 const collectionPath = `artifacts/${appId}/public/data/party_registrations`;
                 console.log("Saving data to:", collectionPath);
 
-                // Sanitize data before saving (remove API key info)
                 const sanitizedData = {
                     ...data,
                     timestamp: new Date().toISOString(),
-                    user_id: userId
+                    user_id: window.userId
                 };
 
                 try {
@@ -89,6 +98,17 @@
                     console.error("Error adding document: ", e);
                     throw e;
                 }
+            }
+        };
+
+        // Application initialization
+        window.app = {
+            isSubmissionEnabled: false,
+            // Flag 'authReady' is passed from firebase init
+            initLogic: (authReady = false) => { 
+                window.app.isSubmissionEnabled = authReady;
+                // Force updatePage to draw UI immediately, regardless of auth status
+                updatePage(); 
             }
         };
 
@@ -234,11 +254,16 @@
             transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
         }
 
-        .cta-button:hover {
+        .cta-button:hover:not(:disabled) {
             transform: translateY(-3px) scale(1.02); 
             /* Stronger external gold glow */
             box-shadow: 0 10px 30px rgba(212, 175, 55, 0.7), 0 0 30px var(--color-gold-luxury); 
             color: var(--color-bg-main);
+        }
+        
+        .cta-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
 
     </style>
@@ -310,310 +335,379 @@
 
     <!-- Main content container (RWD class optimization) -->
     <!-- Max width adjusted: full width on mobile, max-w-lg on larger screens by default -->
-    <div id="main-content" class="w-full max-w-screen-md lg:max-w-lg my-auto py-8 px-6 glass-card rounded-2xl">
-        
-        <!-- Application state management -->
-        <script>
-            // Application state
-            const state = {
-                currentPage: 'home', // 'home', 'form', 'success'
-                formData: {
-                    paymentProof: '',
-                    name: '',
-                    contact: '',
-                    dressCodeConfirmed: false,
-                    ktvWish: '',
-                    diet_noBeef: false,
-                    diet_noAlcohol: false,
-                    diet_vegetarian: '', // 素食類型
-                    diet_other: ''
-                },
-                errorMessage: ''
-            };
+    <!-- Added id 'app-container' for dynamic content injection -->
+    <div id="app-container" class="w-full max-w-screen-md lg:max-w-lg my-auto py-8 px-6 glass-card rounded-2xl">
+        <!-- 這是等待 Firebase 時顯示的預設內容 -->
+        <div class="text-center py-10">
+            <h2 class="font-luxury-heading text-2xl" style="color:var(--color-gold-luxury);">
+                載入中... 聖誕老人在路上！
+            </h2>
+            <p class="mt-2 text-sm text-cream-white/70">
+                如果長時間未載入，請檢查您的網路連線。
+            </p>
+        </div>
+    </div>
+    <div id="debug-info" class="text-xs text-cream-white/50 mt-4 text-center"></div>
 
-            // Helper function: Render icon
-            function renderIcon(name, classes = 'w-5 h-5 inline mr-2') {
-                // Icon uses luxury gold
-                return `<i data-lucide="${name}" class="${classes}" style="color:var(--color-gold-luxury);"></i>`;
-            }
-
-            // Helper function: Update page content
-            function updatePage() {
-                const contentDiv = document.getElementById('main-content');
-                contentDiv.innerHTML = '';
-                state.errorMessage = '';
-                
-                // Clear all dynamic max-width classes first
-                contentDiv.classList.remove('md:max-w-4xl', 'md:max-w-lg'); 
-
-                switch (state.currentPage) {
-                    case 'home':
-                        renderHome(contentDiv);
-                        break;
-                    case 'form':
-                        renderForm(contentDiv);
-                        break;
-                    case 'success':
-                        renderSuccess(contentDiv);
-                        break;
+    <script>
+        // Set Tailwind config to use CSS variables
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'charcoal': 'var(--color-bg-main)',
+                        'deep-brown': 'var(--color-bg-secondary)',
+                        'cream-white': 'var(--color-text-cream)',
+                        'luxury-gold': 'var(--color-gold-luxury)',
+                        'antique-brass': 'var(--color-brass-antique)',
+                        'danger-red': 'var(--color-danger)',
+                    },
+                    boxShadow: {
+                        'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
+                    },
                 }
-                // Re-render Lucide icons
-                lucide.createIcons();
             }
+        }
+    </script>
+    <script>
+        // Application state
+        const state = {
+            currentPage: 'home', // 'home', 'form', 'success'
+            formData: {
+                paymentProof: '',
+                name: '',
+                contact: '',
+                dressCodeConfirmed: false,
+                ktvWish: '',
+                diet_noBeef: false,
+                diet_noAlcohol: false,
+                diet_vegetarian: '', // 素食類型
+                diet_other: ''
+            },
+            errorMessage: '',
+            submissionId: null
+        };
 
-            // --- Page rendering logic ---
+        // Helper function: Render icon
+        function renderIcon(name, classes = 'w-5 h-5 inline mr-2') {
+            // Icon uses luxury gold
+            return `<i data-lucide="${name}" class="${classes}" style="color:var(--color-gold-luxury);"></i>`;
+        }
 
-            // Hero Page (Home)
-            function renderHome(container) {
-                // RWD Enhancement: Use larger max-width for Home page layout on medium/large screens
-                container.classList.add('md:max-w-4xl', 'text-center');
+        // Helper function: Update page content
+        function updatePage() {
+            const container = document.getElementById('app-container');
+            const debugInfo = document.getElementById('debug-info');
 
-                container.innerHTML = `
-                    <!-- RWD Typography: text-4xl on mobile, 5xl on medium screens, 6xl on large screens -->
-                    <h1 class="font-luxury-heading text-4xl sm:text-5xl lg:text-6xl font-extrabold mb-4 pt-2" style="color:var(--color-gold-luxury); text-shadow: 1px 1px 10px rgba(0,0,0,1);">
-                        K歌聖誕禮物趴
-                    </h1>
-                    <!-- RWD Typography: text-lg on mobile, text-xl on larger screens -->
-                    <p class="text-lg sm:text-xl mb-8 text-cream-white">
-                        2025/12/19（五）19:00–23:00｜錢櫃中華新館
-                    </p>
-                    
-                    <!-- CTA Button -->
-                    <button id="cta-button" class="cta-button text-xl sm:text-2xl font-bold py-3 px-10 rounded-full mb-10 mx-auto" onclick="state.currentPage='form'; updatePage();">
-                        搶麥入場！
-                    </button>
-
-                    <!-- Party Info Area (RWD: single column on mobile, two columns on medium screens) -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-left text-cream-white mt-4">
-                        
-                        <!-- Rules Card -->
-                        <div class="p-4 glass-card rounded-xl">
-                            <!-- RWD Typography: text-base on mobile, text-lg on larger screens -->
-                            <h2 class="font-luxury-heading text-base sm:text-lg font-semibold mb-2" style="color:var(--color-gold-luxury);">
-                                ${renderIcon('user-check', 'w-4 h-4 inline mr-1')}名額與費用
-                            </h2>
-                            <p class="mb-2 text-sm sm:text-base">名額：8–12 位</p>
-                            <p class="text-sm sm:text-base">費用：NT$ 500 訂金 (活動後多退少補)</p>
-                            <p class="mt-2 text-xs sm:text-sm" style="color:var(--color-gold-luxury);">* 請先付款再填寫報名表。</p>
-                        </div>
-
-                        <!-- Gift and Dress Card -->
-                        <div class="p-4 glass-card rounded-xl">
-                            <!-- RWD Typography: text-base on mobile, text-lg on larger screens -->
-                            <h2 class="font-luxury-heading text-base sm:text-lg font-semibold mb-2" style="color:var(--color-gold-luxury);">
-                                ${renderIcon('gift', 'w-4 h-4 inline mr-1')}禮物與服裝
-                            </h2>
-                            <p class="mb-2 text-sm sm:text-base"><strong>Dress Code:</strong> 穿著<strong style="color:var(--color-gold-luxury);">紅</strong>或<strong style="color:var(--color-brass-antique);">綠</strong>元素。</p>
-                            <p class="text-sm sm:text-base"><strong>交換禮物:</strong> NT$ 500–800，實用性取向。</p>
-                        </div>
-                    </div>
-                `;
+            // Set initial class list if it's the first render
+            if (container.classList.length === 0) {
+                 container.className = "w-full max-w-screen-md lg:max-w-lg my-auto py-8 px-6 glass-card rounded-2xl";
             }
+            
+            container.innerHTML = '';
+            state.errorMessage = '';
+            
+            // Clear all dynamic max-width classes first
+            container.classList.remove('md:max-w-4xl', 'md:max-w-lg'); 
 
-            // Form Page (Form)
-            function renderForm(container) {
-                // RWD Enhancement: Revert to a smaller max width for forms
-                container.classList.add('md:max-w-lg');
+            switch (state.currentPage) {
+                case 'home':
+                    renderHome(container);
+                    break;
+                case 'form':
+                    renderForm(container);
+                    break;
+                case 'success':
+                    renderSuccess(container);
+                    break;
+            }
+            
+            // Re-render Lucide icons
+            lucide.createIcons();
+
+            // Display debug info at the bottom for troubleshooting
+            debugInfo.innerHTML = `Auth Status: ${window.app.isSubmissionEnabled ? '<span style="color:#22c55e;">已連線 (可提交)</span>' : '<span style="color:var(--color-danger);">未連線 (無法提交)</span>'} | User ID: ${window.userId || 'N/A'}`;
+        }
+
+        // --- Page rendering logic ---
+
+        // Hero Page (Home)
+        function renderHome(container) {
+            // RWD Enhancement: Use larger max-width for Home page layout on medium/large screens
+            container.classList.add('md:max-w-4xl', 'text-center');
+
+            const isEnabled = window.app.isSubmissionEnabled;
+
+            container.innerHTML = `
+                <!-- RWD Typography: text-4xl on mobile, 5xl on medium screens, 6xl on large screens -->
+                <h1 class="font-luxury-heading text-4xl sm:text-5xl lg:text-6xl font-extrabold mb-4 pt-2" style="color:var(--color-gold-luxury); text-shadow: 1px 1px 10px rgba(0,0,0,1);">
+                    K歌聖誕禮物趴
+                </h1>
+                <!-- RWD Typography: text-lg on mobile, text-xl on larger screens -->
+                <p class="text-lg sm:text-xl mb-8 text-cream-white">
+                    2025/12/19（五）19:00–23:00｜錢櫃中華新館
+                </p>
                 
-                container.innerHTML = `
-                    <!-- RWD Typography: text-2xl on mobile, 3xl on larger screens -->
-                    <h2 class="font-luxury-heading text-2xl sm:text-3xl font-bold mb-6 text-center" style="color:var(--color-gold-luxury);">
-                        ${renderIcon('clipboard-list')}欲參加者，敬請填寫下方報名表
-                    </h2>
-                    ${state.errorMessage ? `<div class="p-3 mb-4 rounded-lg text-sm text-center" style="background-color:var(--color-danger); color: var(--color-text-cream);">${state.errorMessage}</div>` : ''}
+                <!-- CTA Button -->
+                <button id="cta-button" 
+                        class="cta-button text-xl sm:text-2xl font-bold py-3 px-10 rounded-full mb-10 mx-auto" 
+                        onclick="state.currentPage='form'; updatePage();"
+                        ${!isEnabled ? 'disabled' : ''}>
+                    ${isEnabled ? '搶麥入場！' : '資料庫連線中...'}
+                </button>
+                ${!isEnabled ? '<p class="text-sm text-danger-red mb-4">資料庫仍在連線中，請稍候再點擊。</p>' : ''}
 
-                    <form id="registration-form" onsubmit="event.preventDefault(); submitForm();">
+
+                <!-- Party Info Area (RWD: single column on mobile, two columns on medium screens) -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-left text-cream-white mt-4">
+                    
+                    <!-- Rules Card -->
+                    <div class="p-4 glass-card rounded-xl">
+                        <!-- RWD Typography: text-base on mobile, text-lg on larger screens -->
+                        <h2 class="font-luxury-heading text-base sm:text-lg font-semibold mb-2" style="color:var(--color-gold-luxury);">
+                            ${renderIcon('user-check', 'w-4 h-4 inline mr-1')}名額與費用
+                        </h2>
+                        <p class="mb-2 text-sm sm:text-base">名額：8–12 位</p>
+                        <p class="text-sm sm:text-base">費用：NT$ 500 訂金 (活動後多退少補)</p>
+                        <p class="mt-2 text-xs sm:text-sm" style="color:var(--color-gold-luxury);">* 請先付款再填寫報名表。</p>
+                    </div>
+
+                    <!-- Gift and Dress Card -->
+                    <div class="p-4 glass-card rounded-xl">
+                        <!-- RWD Typography: text-base on mobile, text-lg on larger screens -->
+                        <h2 class="font-luxury-heading text-base sm:text-lg font-semibold mb-2" style="color:var(--color-gold-luxury);">
+                            ${renderIcon('gift', 'w-4 h-4 inline mr-1')}禮物與服裝
+                        </h2>
+                        <p class="mb-2 text-sm sm:text-base"><strong>Dress Code:</strong> 穿著<strong style="color:var(--color-gold-luxury);">紅</strong>或<strong style="color:var(--color-brass-antique);">綠</strong>元素。</p>
+                        <p class="text-sm sm:text-base"><strong>交換禮物:</strong> NT$ 300–500，實用性取向。</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Form Page (Form)
+        function renderForm(container) {
+            // RWD Enhancement: Revert to a smaller max width for forms
+            container.classList.add('md:max-w-lg');
+            
+            const isEnabled = window.app.isSubmissionEnabled;
+
+            container.innerHTML = `
+                <!-- RWD Typography: text-2xl on mobile, 3xl on larger screens -->
+                <h2 class="font-luxury-heading text-2xl sm:text-3xl font-bold mb-6 text-center" style="color:var(--color-gold-luxury);">
+                    ${renderIcon('clipboard-list')}欲參加者，敬請填寫下方報名表
+                </h2>
+                ${state.errorMessage ? `<div class="p-3 mb-4 rounded-lg text-sm text-center" style="background-color:var(--color-danger); color: var(--color-text-cream);">${state.errorMessage}</div>` : ''}
+                ${!isEnabled ? '<div class="p-3 mb-4 rounded-lg text-sm text-center bg-yellow-600/50 text-cream-white">🚨 注意：資料庫連線不穩定，報名表送出可能失敗。</div>' : ''}
+
+
+                <form id="registration-form" onsubmit="event.preventDefault(); submitForm();">
+                    
+                    <!-- Step 1: Deposit Payment Card -->
+                    <div class="p-6 mb-8 rounded-xl glass-card border-2" style="border-color:var(--color-gold-luxury);">
+                        <!-- RWD Typography: text-lg on mobile, 2xl on larger screens -->
+                        <h3 class="font-luxury-heading text-lg sm:text-xl font-bold mb-4" style="color:var(--color-gold-luxury);">
+                            ${renderIcon('credit-card')}步驟一：預付活動訂金
+                        </h3>
+                        <div class="text-center mb-4">
+                            <!-- RWD Typography: 4xl on mobile, 5xl on larger screens -->
+                            <span class="font-luxury-heading text-4xl sm:text-5xl font-extrabold" style="color:var(--color-gold-luxury); text-shadow: 2px 2px 5px rgba(0,0,0,0.7);">
+                                NT$ 500
+                            </span>
+                        </div>
+                        <p class="text-cream-white mb-2 text-sm">（請先完成付款，再填寫下方表單！）</p>
+                        <p class="mt-2 text-xs sm:text-sm" style="color:var(--color-gold-luxury);">* 溫馨提示：訂金將於活動結束後依實際消費計算，採多退少補原則。</p>
+                        <!-- Payment info placeholder -->
+                        <p class="text-xs mt-3 text-cream-white/70">
+                            支付方式：LINE Pay / 銀行轉帳 (請向主辦人確認帳號資訊)
+                        </p>
+                    </div>
+
+                    <!-- Step 2: Registration Data -->
+                    <div class="space-y-6">
+                        <!-- RWD Typography: text-base on mobile, text-lg on larger screens -->
+                        <div class="font-luxury-heading text-base sm:text-lg font-semibold" style="color:var(--color-brass-antique);">
+                            ${renderIcon('user-circle')}報名者資料
+                        </div>
                         
-                        <!-- Step 1: Deposit Payment Card -->
-                        <div class="p-6 mb-8 rounded-xl glass-card border-2" style="border-color:var(--color-gold-luxury);">
-                            <!-- RWD Typography: text-lg on mobile, 2xl on larger screens -->
-                            <h3 class="font-luxury-heading text-lg sm:text-xl font-bold mb-4" style="color:var(--color-gold-luxury);">
-                                ${renderIcon('credit-card')}步驟一：預付活動訂金
-                            </h3>
-                            <div class="text-center mb-4">
-                                <!-- RWD Typography: 4xl on mobile, 5xl on larger screens -->
-                                <span class="font-luxury-heading text-4xl sm:text-5xl font-extrabold" style="color:var(--color-gold-luxury); text-shadow: 2px 2px 5px rgba(0,0,0,0.7);">
-                                    NT$ 500
-                                </span>
-                            </div>
-                            <p class="text-cream-white mb-2 text-sm">（請先完成付款，再填寫下方表單！）</p>
-                            <p class="text-xs sm:text-sm font-semibold mt-2" style="color:var(--color-gold-luxury);">
-                                👉 溫馨提示：訂金將於活動結束後依實際消費計算，採多退少補原則。
-                            </p>
-                            <!-- Payment info placeholder -->
-                            <p class="text-xs mt-3 text-cream-white/70">
-                                支付方式：LINE Pay / 銀行轉帳 (請向主辦人確認帳號資訊)
-                            </p>
+                        <!-- Required Fields (Inputs are w-full by default, which is good for RWD) -->
+                        <div>
+                            <label for="paymentProof" class="block text-sm font-medium text-cream-white/80 mb-1">付款證明後五碼/暱稱 <span style="color:var(--color-danger);">*</span></label>
+                            <input type="text" id="paymentProof" name="paymentProof" value="${state.formData.paymentProof}" oninput="state.formData.paymentProof = this.value" class="glass-input w-full p-2" placeholder="請填寫轉帳後五碼或 LINE Pay 暱稱" required>
+                        </div>
+                        <div>
+                            <label for="name" class="block text-sm font-medium text-cream-white/80 mb-1">姓名/暱稱 <span style="color:var(--color-danger);">*</span></label>
+                            <input type="text" id="name" name="name" value="${state.formData.name}" oninput="state.formData.name = this.value" class="glass-input w-full p-2" placeholder="派對上希望被稱呼的名字" required>
+                        </div>
+                        <div>
+                            <label for="contact" class="block text-sm font-medium text-cream-white/80 mb-1">聯絡方式 (LINE ID/Instrange帳號) <span style="color:var(--color-danger);">*</span></label>
+                            <input type="text" id="contact" name="contact" value="${state.formData.contact}" oninput="state.formData.contact = this.value" class="glass-input w-full p-2" placeholder="方便主辦人聯繫的 LINE ID 或 IG 帳號" required>
                         </div>
 
-                        <!-- Step 2: Registration Data -->
-                        <div class="space-y-6">
-                            <!-- RWD Typography: text-base on mobile, text-lg on larger screens -->
-                            <div class="font-luxury-heading text-base sm:text-lg font-semibold" style="color:var(--color-brass-antique);">
-                                ${renderIcon('user-circle')}報名者資料
-                            </div>
-                            
-                            <!-- Required Fields (Inputs are w-full by default, which is good for RWD) -->
-                            <div>
-                                <label for="paymentProof" class="block text-sm font-medium text-cream-white/80 mb-1">付款證明後五碼/暱稱 <span style="color:var(--color-danger);">*</span></label>
-                                <input type="text" id="paymentProof" name="paymentProof" value="${state.formData.paymentProof}" oninput="state.formData.paymentProof = this.value" class="glass-input w-full p-2" placeholder="請填寫轉帳後五碼或 LINE Pay 暱稱" required>
-                            </div>
-                            <div>
-                                <label for="name" class="block text-sm font-medium text-cream-white/80 mb-1">姓名/暱稱 <span style="color:var(--color-danger);">*</span></label>
-                                <input type="text" id="name" name="name" value="${state.formData.name}" oninput="state.formData.name = this.value" class="glass-input w-full p-2" placeholder="派對上希望被稱呼的名字" required>
-                            </div>
-                            <div>
-                                <label for="contact" class="block text-sm font-medium text-cream-white/80 mb-1">聯絡方式 (LINE ID/Instrange帳號) <span style="color:var(--color-danger);">*</span></label>
-                                <input type="text" id="contact" name="contact" value="${state.formData.contact}" oninput="state.formData.contact = this.value" class="glass-input w-full p-2" placeholder="方便主辦人聯繫的 LINE ID 或 IG 帳號" required>
-                            </div>
+                        <!-- Dress Code Confirmation -->
+                        <div class="flex items-center pt-2">
+                            <input type="checkbox" id="dressCodeConfirmed" name="dressCodeConfirmed" ${state.formData.dressCodeConfirmed ? 'checked' : ''} onchange="state.formData.dressCodeConfirmed = this.checked" class="glass-check w-4 h-4 mr-3 cursor-pointer">
+                            <label for="dressCodeConfirmed" class="text-sm font-medium" style="color:var(--color-gold-luxury);">
+                                ${renderIcon('check-circle', 'w-4 h-4 inline mr-1')}我已確認並會遵守「紅或綠」服裝規定 <span style="color:var(--color-danger);">*</span>
+                            </label>
+                        </div>
 
-                            <!-- Dress Code Confirmation -->
-                            <div class="flex items-center pt-2">
-                                <input type="checkbox" id="dressCodeConfirmed" name="dressCodeConfirmed" ${state.formData.dressCodeConfirmed ? 'checked' : ''} onchange="state.formData.dressCodeConfirmed = this.checked" class="glass-check w-4 h-4 mr-3 cursor-pointer">
-                                <label for="dressCodeConfirmed" class="text-sm font-medium" style="color:var(--color-gold-luxury);">
-                                    ${renderIcon('check-circle', 'w-4 h-4 inline mr-1')}我已確認並會遵守「紅或綠」服裝規定 <span style="color:var(--color-danger);">*</span>
+                        <hr class="border-t border-white/20 my-6">
+
+                        <!-- Optional: KTV Wish -->
+                        <div>
+                            <label for="ktvWish" class="block text-sm font-medium text-cream-white/80 mb-1">
+                                ${renderIcon('music')} KTV 點歌許願 (選填)
+                            </label>
+                            <input type="text" id="ktvWish" name="ktvWish" value="${state.formData.ktvWish}" oninput="state.formData.ktvWish = this.value" class="glass-input w-full p-2" placeholder="想聽或想唱的歌曲名稱">
+                        </div>
+
+                        <!-- Optional: Dietary Preferences -->
+                        <div class="pt-2">
+                            <label class="block text-sm font-medium text-cream-white/80 mb-2 font-luxury-heading">
+                                ${renderIcon('utensils')} 餐飲偏好 (請勾選，點餐會參考)
+                            </label>
+                            <div class="space-y-2">
+                                <label class="flex items-center text-sm text-cream-white">
+                                    <input type="checkbox" name="diet" value="noBeef" ${state.formData.diet_noBeef ? 'checked' : ''} onchange="state.formData.diet_noBeef = this.checked" class="glass-check w-4 h-4 mr-2 cursor-pointer">
+                                    不吃牛
                                 </label>
-                            </div>
-
-                            <hr class="border-t border-white/20 my-6">
-
-                            <!-- Optional: KTV Wish -->
-                            <div>
-                                <label for="ktvWish" class="block text-sm font-medium text-cream-white/80 mb-1">
-                                    ${renderIcon('music')} KTV 點歌許願 (選填)
+                                <label class="flex items-center text-sm text-cream-white">
+                                    <input type="checkbox" name="diet" value="noAlcohol" ${state.formData.diet_noAlcohol ? 'checked' : ''} onchange="state.formData.diet_noAlcohol = this.checked" class="glass-check w-4 h-4 mr-2 cursor-pointer">
+                                    不喝酒
                                 </label>
-                                <input type="text" id="ktvWish" name="ktvWish" value="${state.formData.ktvWish}" oninput="state.formData.ktvWish = this.value" class="glass-input w-full p-2" placeholder="想聽或想唱的歌曲名稱">
-                            </div>
-
-                            <!-- Optional: Dietary Preferences -->
-                            <div class="pt-2">
-                                <label class="block text-sm font-medium text-cream-white/80 mb-2 font-luxury-heading">
-                                    ${renderIcon('utensils')} 餐飲偏好 (請勾選，點餐會參考)
-                                </label>
-                                <div class="space-y-2">
-                                    <label class="flex items-center text-sm text-cream-white">
-                                        <input type="checkbox" name="diet" value="noBeef" ${state.formData.diet_noBeef ? 'checked' : ''} onchange="state.formData.diet_noBeef = this.checked" class="glass-check w-4 h-4 mr-2 cursor-pointer">
-                                        不吃牛
-                                    </label>
-                                    <label class="flex items-center text-sm text-cream-white">
-                                        <input type="checkbox" name="diet" value="noAlcohol" ${state.formData.diet_noAlcohol ? 'checked' : ''} onchange="state.formData.diet_noAlcohol = this.checked" class="glass-check w-4 h-4 mr-2 cursor-pointer">
-                                        不喝酒
-                                    </label>
-                                    <div class="ml-6">
-                                        <label for="diet_vegetarian" class="block text-sm font-medium text-cream-white/70 mb-1 mt-2">素食類型 (若為素食者)</label>
-                                        <input type="text" id="diet_vegetarian" name="diet_vegetarian" value="${state.formData.diet_vegetarian}" oninput="state.formData.diet_vegetarian = this.value" class="glass-input w-full p-2 text-xs" placeholder="例如：蛋奶素/鍋邊素/全素">
-                                    </div>
-                                    <div>
-                                        <label for="diet_other" class="block text-sm font-medium text-cream-white/70 mb-1 mt-2">其他過敏/禁忌 (開放欄位)</label>
-                                        <input type="text" id="diet_other" name="diet_other" value="${state.formData.diet_other}" oninput="state.formData.diet_other = this.value" class="glass-input w-full p-2 text-xs" placeholder="例如：花生過敏、不吃海鮮等">
-                                    </div>
+                                <div class="ml-6">
+                                    <label for="diet_vegetarian" class="block text-sm font-medium text-cream-white/70 mb-1 mt-2">素食類型 (若為素食者)</label>
+                                    <input type="text" id="diet_vegetarian" name="diet_vegetarian" value="${state.formData.diet_vegetarian}" oninput="state.formData.diet_vegetarian = this.value" class="glass-input w-full p-2 text-xs" placeholder="例如：蛋奶素/鍋邊素/全素">
+                                </div>
+                                <div>
+                                    <label for="diet_other" class="block text-sm font-medium text-cream-white/70 mb-1 mt-2">其他過敏/禁忌 (開放欄位)</label>
+                                    <input type="text" id="diet_other" name="diet_other" value="${state.formData.diet_other}" oninput="state.formData.diet_other = this.value" class="glass-input w-full p-2 text-xs" placeholder="例如：花生過敏、不吃海鮮等">
                                 </div>
                             </div>
                         </div>
-
-                        <p class="text-xs text-center mt-6 mb-2 text-cream-white/70">
-                            （填寫完成後，請留意跳出的頁面，內含當天進場的 IG 群組連結喔！）
-                        </p>
-
-                        <!-- RWD Typography: text-lg on mobile, xl on larger screens -->
-                        <button type="submit" class="cta-button w-full text-lg sm:text-xl font-bold py-3 px-10 rounded-full mt-6">
-                            送出報名
-                        </button>
-                    </form>
-                `;
-            }
-
-            // Success Page (Success)
-            function renderSuccess(container) {
-                // RWD Enhancement: Revert to a smaller max width for focus
-                container.classList.add('md:max-w-lg');
-
-                // Use the new IG link
-                const igLink = "https://ig.me/j/AbZP3xD1ugaWGDMX/";
-
-                container.innerHTML = `
-                    <!-- RWD Typography: 3xl on mobile, 4xl on larger screens -->
-                    <h2 class="font-luxury-heading text-3xl sm:text-4xl font-extrabold mb-6" style="color:var(--color-gold-luxury); text-shadow: 2px 2px 5px rgba(0,0,0,0.7);">
-                        🎉 恭喜！搶麥入場成功！
-                    </h2>
-                    <p class="text-lg sm:text-xl mb-8 text-cream-white">
-                        您的名額已保留。我們非常期待與您在 KTV 狂歡！
-                    </p>
-
-                    <!-- IG Group CTA: RWD Typography: text-xl on mobile, 2xl on larger screens -->
-                    <a href="${igLink}" target="_blank" class="block text-xl sm:text-2xl font-bold py-4 px-10 rounded-full mb-10 mx-auto" style="background-color:var(--color-gold-luxury); color:var(--color-bg-main); border: 3px solid var(--color-brass-antique); transition: all 0.3s ease;">
-                        ${renderIcon('instagram', 'w-6 h-6 inline mr-3')}立即加入 IG 派對群組
-                    </a>
-                    <p class="text-sm text-cream-white/80 mb-8">
-                        （請務必加入群組，以便聯繫、發布包廂號碼及突發狀況通知。）
-                    </p>
-
-                    <!-- Location Info -->
-                    <div class="glass-card p-4 rounded-xl mb-8 text-left text-cream-white">
-                        <h3 class="font-luxury-heading text-lg font-semibold mb-3" style="color:var(--color-gold-luxury);">
-                            ${renderIcon('map-pin')}活動地點：錢櫃中華新館
-                        </h3>
-                        <!-- Map Embed (Responsive Aspect Ratio) -->
-                        <div class="aspect-w-16 aspect-h-9 w-full rounded-lg overflow-hidden">
-                            <iframe
-                              src="https://maps.google.com/?cid=14928216406343438233&hl=zh-TW&output=embed"
-                              width="100%"
-                              height="300"
-                              style="border:0; border-radius: 10px;"
-                              allowfullscreen=""
-                              loading="lazy"
-                              referrerpolicy="no-referrer-when-downgrade"
-                            ></iframe>
-                        </div>
                     </div>
-                `;
+
+                    <p class="text-xs text-center mt-6 mb-2 text-cream-white/70">
+                        （填寫完成後，請留意跳出的頁面，內含當天進場的 IG 群組連結喔！）
+                    </p>
+
+                    <!-- RWD Typography: text-lg on mobile, xl on larger screens -->
+                    <button type="submit" 
+                            class="cta-button w-full text-lg sm:text-xl font-bold py-3 px-10 rounded-full mt-6"
+                            ${!isEnabled ? 'disabled' : ''}>
+                        送出報名
+                    </button>
+                    ${!isEnabled ? '<p class="text-sm text-danger-red mt-2 text-center">** 資料庫未連線，無法送出報名 **</p>' : ''}
+
+                </form>
+            `;
+        }
+
+        // Success Page (Success)
+        function renderSuccess(container) {
+            // RWD Enhancement: Revert to a smaller max width for focus
+            container.classList.add('md:max-w-lg');
+
+            // Use the new IG link
+            const igLink = "https://ig.me/j/AbZP3xD1ugaWGDMX/";
+
+            container.innerHTML = `
+                <!-- RWD Typography: 3xl on mobile, 4xl on larger screens -->
+                <h2 class="font-luxury-heading text-3xl sm:text-4xl font-extrabold mb-6" style="color:var(--color-gold-luxury); text-shadow: 2px 2px 5px rgba(0,0,0,0.7);">
+                    🎉 恭喜！搶麥入場成功！
+                </h2>
+                <p class="text-lg sm:text-xl mb-8 text-cream-white">
+                    您的名額已保留。我們非常期待與您在 KTV 狂歡！
+                </p>
+                <div class="text-xs text-cream-white/70 mb-4">
+                    您的報名編號 (用於驗證)：${state.submissionId || 'N/A (請截圖此頁面)'}
+                </div>
+
+
+                <!-- IG Group CTA: RWD Typography: text-xl on mobile, 2xl on larger screens -->
+                <a href="${igLink}" target="_blank" class="block text-xl sm:text-2xl font-bold py-4 px-10 rounded-full mb-10 mx-auto" style="background-color:var(--color-gold-luxury); color:var(--color-bg-main); border: 3px solid var(--color-brass-antique); transition: all 0.3s ease;">
+                    ${renderIcon('instagram', 'w-6 h-6 inline mr-3')}立即加入 IG 派對群組
+                </a>
+                <p class="text-sm text-cream-white/80 mb-8">
+                    （請務必加入群組，以便聯繫、發布包廂號碼及突發狀況通知。）
+                </p>
+
+                <!-- Location Info -->
+                <div class="glass-card p-4 rounded-xl mb-8 text-left text-cream-white">
+                    <h3 class="font-luxury-heading text-lg font-semibold mb-3" style="color:var(--color-gold-luxury);">
+                        ${renderIcon('map-pin')}活動地點：錢櫃中華新館
+                    </h3>
+                    <!-- Map Embed (Responsive Aspect Ratio) -->
+                    <div class="aspect-w-16 aspect-h-9 w-full rounded-lg overflow-hidden">
+                        <iframe
+                          src="https://maps.google.com/?cid=14928216406343438233&hl=zh-TW&output=embed"
+                          width="100%"
+                          height="300"
+                          style="border:0; border-radius: 10px;"
+                          allowfullscreen=""
+                          loading="lazy"
+                          referrerpolicy="no-referrer-when-downgrade"
+                        ></iframe>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Form submission logic
+        async function submitForm() {
+            const form = document.getElementById('registration-form');
+            if (!window.app.isSubmissionEnabled) {
+                 state.errorMessage = '🚨 資料庫尚未連線，無法提交報名！請稍後再試。';
+                 updatePage();
+                 return;
             }
 
-            // Form submission logic
-            async function submitForm() {
-                const form = document.getElementById('registration-form');
-                // Check if all required fields are filled and dress code is confirmed
-                if (!form.checkValidity() || !state.formData.dressCodeConfirmed) {
-                    state.errorMessage = '請填寫所有必填欄位並確認 Dress Code 規定！';
-                    updatePage();
-                    return;
-                }
-
-                try {
-                    // Clean and prepare data to be saved
-                    const dataToSave = {
-                        name: state.formData.name,
-                        contact: state.formData.contact,
-                        paymentProof: state.formData.paymentProof,
-                        dressCodeConfirmed: state.formData.dressCodeConfirmed,
-                        ktvWish: state.formData.ktvWish || '無',
-                        diet: {
-                            noBeef: state.formData.diet_noBeef,
-                            noAlcohol: state.formData.diet_noAlcohol,
-                            vegetarian: state.formData.diet_vegetarian || '無',
-                            other: state.formData.diet_other || '無'
-                        }
-                    };
-
-                    const submissionId = await window.firebase.saveRegistration(dataToSave);
-                    state.submissionId = submissionId;
-                    state.currentPage = 'success';
-                    updatePage();
-
-                } catch (error) {
-                    console.error("Submission failed:", error);
-                    state.errorMessage = '報名失敗，請檢查網路連線或稍後再試。';
-                    updatePage();
-                }
+            // Check if all required fields are filled and dress code is confirmed
+            if (!form.checkValidity() || !state.formData.dressCodeConfirmed) {
+                state.errorMessage = '請填寫所有必填欄位並確認 Dress Code 規定！';
+                updatePage();
+                return;
             }
 
-            // Application initialization
-            window.app = {
-                initLogic: () => {
-                    updatePage();
-                }
-            };
-        </script>
-    </div>
+            try {
+                // Show loading state (optional: disable button)
+                const submitButton = form.querySelector('button[type="submit"]');
+                submitButton.textContent = '提交中...';
+                submitButton.disabled = true;
+
+                // Clean and prepare data to be saved
+                const dataToSave = {
+                    name: state.formData.name,
+                    contact: state.formData.contact,
+                    paymentProof: state.formData.paymentProof,
+                    dressCodeConfirmed: state.formData.dressCodeConfirmed,
+                    ktvWish: state.formData.ktvWish || '無',
+                    giftValue: 'NT$ 300–500', // Save the current gift value
+                    diet: {
+                        noBeef: state.formData.diet_noBeef,
+                        noAlcohol: state.formData.diet_noAlcohol,
+                        vegetarian: state.formData.diet_vegetarian || '無',
+                        other: state.formData.diet_other || '無'
+                    }
+                };
+
+                const submissionId = await window.firebase.saveRegistration(dataToSave);
+                state.submissionId = submissionId;
+                state.currentPage = 'success';
+                updatePage();
+
+            } catch (error) {
+                console.error("Submission failed:", error);
+                // Re-enable button and reset text
+                const submitButton = form.querySelector('button[type="submit"]');
+                submitButton.textContent = '送出報名';
+                submitButton.disabled = false;
+                
+                state.errorMessage = '報名失敗，可能原因：Firebase連線問題或網路異常。';
+                updatePage();
+            }
+        }
+    </script>
 </body>
 </html>
