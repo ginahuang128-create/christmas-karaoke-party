@@ -3,711 +3,401 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>K歌聖誕禮物趴 - 搶麥入場！</title>
+    <title>KTV 聖誕交換禮物趴 - 歲末狂歡夜</title>
     <!-- 載入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 載入 Lucide Icons (用於小圖示) -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- 載入 高級襯線字體：Playfair Display (用於標題) -->
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap" rel="stylesheet">
+    <!-- 載入 Google Fonts: Playfair Display (主標題) & Noto Sans TC (內文) -->
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Noto+Sans+TC:wght@100..900&display=swap" rel="stylesheet">
     
-    <!-- 載入 Firebase SDK -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, addDoc, onSnapshot, collection, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Set Firebase log level
-        setLogLevel('debug');
-
-        // --- Firebase environment variables initialization ---
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        // Check if config exists and is a string before parsing
-        const configString = typeof __firebase_config !== 'undefined' ? __firebase_config : '{}';
-        let firebaseConfig = {};
-        try {
-            firebaseConfig = JSON.parse(configString);
-        } catch (e) {
-            console.error("Failed to parse firebase config:", e);
-        }
-
-        let app, db, auth, userId = 'N/A (Initializing...)';
-
-        // Mount necessary objects to global Window for JS access
-        window.firebase = {
-            init: async function() {
-                // If config is empty, we still proceed to show the UI
-                if (Object.keys(firebaseConfig).length === 0) {
-                    console.warn("Firebase config is missing. Data submission will be disabled.");
-                    window.app.initLogic(false); // Force UI render, submission disabled
-                    return;
-                }
-
-                try {
-                    app = initializeApp(firebaseConfig);
-                    db = getFirestore(app);
-                    auth = getAuth(app);
-                    window.db = db; // Mount Firestore instance
-
-                    // Authentication flow
-                    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-                    if (initialAuthToken) {
-                        await signInWithCustomToken(auth, initialAuthToken);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-
-                    onAuthStateChanged(auth, (user) => {
-                        if (user) {
-                            userId = user.uid;
-                            window.userId = userId;
-                            console.log("Firebase Auth Ready. User ID:", userId);
-                            // Auth ready, initialize app logic
-                            window.app.initLogic(true);
-                        } else {
-                            // Should not happen often if sign-in is successful
-                            console.warn("User is not signed in after auth attempt.");
-                            window.app.initLogic(false);
-                        }
-                    });
-
-                } catch (error) {
-                    console.error("Firebase Initialization Failed:", error);
-                    window.app.initLogic(false); // Force UI render even on failure
-                }
-            },
-            saveRegistration: async function(data) {
-                if (!db || !window.userId) {
-                    throw new Error("Firestore not initialized or user not authenticated. Submission aborted.");
-                }
-
-                const collectionPath = `artifacts/${appId}/public/data/party_registrations`;
-                console.log("Saving data to:", collectionPath);
-
-                const sanitizedData = {
-                    ...data,
-                    timestamp: new Date().toISOString(),
-                    user_id: window.userId
-                };
-
-                try {
-                    const docRef = await addDoc(collection(db, collectionPath), sanitizedData);
-                    console.log("Document written with ID: ", docRef.id);
-                    return docRef.id;
-                } catch (e) {
-                    console.error("Error adding document: ", e);
-                    throw e;
-                }
-            }
-        };
-
-        // Application initialization
-        window.app = {
-            isSubmissionEnabled: false,
-            // Flag 'authReady' is passed from firebase init
-            initLogic: (authReady = false) => { 
-                window.app.isSubmissionEnabled = authReady;
-                // Force updatePage to draw UI immediately, regardless of auth status
-                updatePage(); 
-            }
-        };
-
-        // Start Firebase initialization on window load
-        window.onload = () => {
-            window.firebase.init();
-        };
-
-    </script>
     <style>
-        /* ------------------------------------- */
-        /* 1. 定義奢華聖誕配色 (Luxury Jewel Tones) */
-        /* ------------------------------------- */
+        /* 顏色與字體變數定義 */
         :root {
-            --color-bg-main: #121212; /* 極深木炭 */
-            --color-bg-secondary: #332619; /* 暖調深棕 */
-            --color-text-cream: #FAF9F6; /* 奶油白 */
-            --color-gold-luxury: #D4AF37; /* 奢華暖金 (Accent A) */
-            --color-brass-antique: #A9853C; /* 復古黃銅 (Accent B) */
-            --color-danger: #930018; /* 用於必填星號或錯誤訊息 */
+            --bg-color: #304231; /* 深墨綠/橄欖綠 */
+            --accent-color: #D9C2A4; /* 溫暖淺金色 */
+            --text-color: #D9C2A4;
+            --main-font: 'Noto Sans TC', sans-serif;
+            --title-font: 'Playfair Display', serif;
         }
 
-        /* 設置字體與全域文字顏色 */
         body {
-            /* 中文及內文優先使用易讀的 Noto Sans TC / Inter */
-            font-family: 'Noto Sans TC', 'Inter', system-ui, sans-serif;
-            color: var(--color-text-cream);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--main-font);
         }
 
-        /* 高級襯線字體樣式 (用於標題) */
-        .font-luxury-heading {
-            /* 使用 Playfair Display 這種經典襯線字體來營造高級感 */
-            font-family: 'Playfair Display', serif;
-            font-weight: 700; /* 加粗以強調 */
+        /* 主標題樣式 (使用 Playfair Display 模擬優雅手寫感) */
+        .title-font {
+            font-family: var(--title-font);
+        }
+        
+        /* 捲動動畫 */
+        .animate-on-scroll {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+        }
+        
+        .visible {
+            opacity: 1;
+            transform: translateY(0);
         }
 
-        /* ------------------------------------- */
-        /* 2. 背景與閃爍星星動畫 (Twinkling Stars) */
-        /* ------------------------------------- */
-        .christmas-bg {
-            /* Base color is deep charcoal */
-            background-color: var(--color-bg-main); 
-            /* Soft gradient mix with deep brown for texture */
-            background: radial-gradient(circle at top left, var(--color-bg-secondary) 0%, transparent 70%),
-                        radial-gradient(circle at bottom right, var(--color-bg-secondary) 0%, transparent 70%),
-                        linear-gradient(135deg, var(--color-bg-main) 0%, #000000 100%); 
-            background-blend-mode: overlay, overlay, normal;
-            background-size: 400% 400%;
-            animation: backgroundShift 20s ease infinite;
-            overflow: hidden;
+        /* 特殊按鈕樣式 (外框風格) */
+        .outline-button {
+            border: 2px solid var(--accent-color);
+            color: var(--accent-color);
+            background-color: transparent;
+            transition: all 0.3s ease;
+        }
+
+        .outline-button:hover {
+            background-color: var(--accent-color);
+            color: var(--bg-color);
+        }
+
+        /* 提升 SVG 線稿的顏色 */
+        .svg-icon {
+            stroke: var(--accent-color);
+            fill: none;
+            stroke-width: 1.5;
+        }
+
+        /* 星星閃爍背景動畫 (更明顯) */
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.9; } /* 增加最大亮度 */
+            50% { opacity: 0.1; }      /* 增加最小亮度，使閃爍更劇烈 */
+        }
+        
+        /* 使用 ::before 實現閃爍顆粒背景 */
+        #hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: -1;
+            background-image: radial-gradient(var(--accent-color) 0.5px, transparent 0.5px);
+            background-size: 10px 10px; /* 增加顆粒密度 */
+            animation: twinkle 4s infinite alternate; /* 加快閃爍速度 */
+        }
+
+        /* 飄雪動畫 */
+        @keyframes snowfall {
+            0% { background-position: 0% 0%; }
+            100% { background-position: 0% 100%; } /* 垂直向下飄落 */
+        }
+
+        /* 使用 ::after 實現飄雪效果 (已增強) */
+        #hero::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: -1;
+            /* 模擬雪花，增加顆粒數量、大小和移動速度 */
+            background-image: 
+                radial-gradient(1.5px 1.5px at 10% 10%, var(--text-color), transparent),
+                radial-gradient(1px 1px at 30% 30%, var(--text-color), transparent),
+                radial-gradient(2px 2px at 50% 50%, var(--text-color), transparent),
+                radial-gradient(1.5px 1.5px at 70% 70%, var(--text-color), transparent),
+                radial-gradient(1px 1px at 90% 90%, var(--text-color), transparent),
+                radial-gradient(2px 2px at 5% 60%, var(--text-color), transparent),
+                radial-gradient(1.5px 1.5px at 85% 25%, var(--text-color), transparent),
+                radial-gradient(1px 1px at 40% 80%, var(--text-color), transparent);
+            background-size: 100% 250%; /* 讓雪花可以向下移動更遠 */
+            opacity: 0.8; /* 稍微增加不透明度 */
+            animation: snowfall 20s linear infinite; /* 加快飄落速度 */
+        }
+
+        /* 確保 Hero 區塊的定位 */
+        #hero {
             position: relative;
         }
-
-        @keyframes backgroundShift {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-        }
-
-        /* Twinkling stars style */
-        .star-twinkle {
-            position: absolute;
-            width: 4px; /* Slightly increased size */
-            height: 4px; /* Slightly increased size */
-            border-radius: 50%;
-            background: var(--color-text-cream); /* Cream white for star light */
-            opacity: 0; /* Default hidden */
-            box-shadow: 0 0 5px var(--color-text-cream); /* Subtle glow */
-            filter: blur(0.5px); /* Slight blur for realism */
-            pointer-events: none;
-            /* Different animation delay and duration for each star */
-            animation: twinkle 1.2s infinite alternate ease-in-out; 
-        }
-
-        /* Twinkle animation: change size and opacity */
-        @keyframes twinkle {
-            0% { transform: scale(0.3); opacity: 0; } 
-            50% { transform: scale(1.5); opacity: 1; } 
-            100% { transform: scale(0.6); opacity: 0.5; } 
-        }
-
-        /* ------------------------------------- */
-        /* 3. 玻璃擬態 (Glassmorphism) 效果 */
-        /* ------------------------------------- */
-        .glass-card {
-            background-color: rgba(255, 255, 255, 0.08); 
-            backdrop-filter: blur(35px); 
-            border: 1px solid rgba(255, 255, 255, 0.1); 
-            /* Deep external shadow + subtle internal light glow */
-            box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.7), 
-                        inset 0 0 10px rgba(255, 255, 255, 0.05);
-            transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
-        }
-
-        /* Glass card Hover effect */
-        .glass-card:hover {
-            /* Stronger external glow and golden border */
-            box-shadow: 0 20px 80px 0 rgba(0, 0, 0, 0.95), 
-                        0 0 20px 0 var(--color-gold-luxury); 
-            border: 1px solid var(--color-gold-luxury);
-            transform: translateY(-2px); 
-        }
-        
-        /* ------------------------------------- */
-        /* 4. 輸入框 (Input) 互動效果 */
-        /* ------------------------------------- */
-        .glass-input {
-            background: none;
-            border: none;
-            border-bottom: 2px solid var(--color-brass-antique); /* Antique brass underline */
-            color: var(--color-text-cream);
-            transition: border-bottom-color 0.4s ease, box-shadow 0.4s ease;
-        }
-
-        /* Focus: Antique brass -> Luxury gold glow */
-        .glass-input:focus {
-            outline: none;
-            border-bottom-color: var(--color-gold-luxury);
-            box-shadow: 0 1px 0 0 var(--color-gold-luxury), 0 0 5px var(--color-gold-luxury);
-        }
-        
-        /* Checkbox/Radio style */
-        .glass-check {
-            accent-color: var(--color-gold-luxury);
-            border-color: var(--color-brass-antique);
-        }
-
-        /* ------------------------------------- */
-        /* 5. CTA Button (Luxury Gold Background) */
-        /* ------------------------------------- */
-        .cta-button {
-            /* Metallic gradient background */
-            background: linear-gradient(145deg, var(--color-gold-luxury) 0%, var(--color-brass-antique) 100%);
-            border: 3px solid var(--color-gold-luxury); 
-            
-            /* Engraved text effect */
-            color: var(--color-bg-main);
-            text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.2); 
-            
-            /* Initial shadow for depth */
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
-            font-weight: 800; 
-            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-        }
-
-        .cta-button:hover:not(:disabled) {
-            transform: translateY(-3px) scale(1.02); 
-            /* Stronger external gold glow */
-            box-shadow: 0 10px 30px rgba(212, 175, 55, 0.7), 0 0 30px var(--color-gold-luxury); 
-            color: var(--color-bg-main);
-        }
-        
-        .cta-button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
     </style>
-    <script>
-        // Set Tailwind config to use CSS variables
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        'charcoal': 'var(--color-bg-main)',
-                        'deep-brown': 'var(--color-bg-secondary)',
-                        'cream-white': 'var(--color-text-cream)',
-                        'luxury-gold': 'var(--color-gold-luxury)',
-                        'antique-brass': 'var(--color-brass-antique)',
-                        'danger-red': 'var(--color-danger)',
-                    },
-                    boxShadow: {
-                        'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
-                    },
-                }
-            }
-        }
-    </script>
 </head>
-<body class="min-h-screen christmas-bg flex flex-col items-center p-4 sm:p-8">
+<body class="min-h-screen antialiased">
 
-    <!-- Twinkling Stars Background Animation (40 stars) -->
-    <div class="star-twinkle" style="top: 6%; left: 82%; animation-delay: 0.1s; animation-duration: 2.5s;"></div>
-    <div class="star-twinkle" style="top: 16%; left: 3%; animation-delay: 1.2s; animation-duration: 1.8s;"></div>
-    <div class="star-twinkle" style="top: 92%; left: 96%; animation-delay: 0.5s; animation-duration: 3.0s;"></div>
-    <div class="star-twinkle" style="top: 51%; left: 31%; animation-delay: 2.1s; animation-duration: 2.0s;"></div>
-    <div class="star-twinkle" style="top: 76%; left: 9%; animation-delay: 0.8s; animation-duration: 1.4s;"></div>
-    <div class="star-twinkle" style="top: 24%; left: 71%; animation-delay: 3.5s; animation-duration: 2.2s;"></div>
-    <div class="star-twinkle" style="top: 86%; left: 49%; animation-delay: 1.7s; animation-duration: 2.8s;"></div>
-    <div class="star-twinkle" style="top: 11%; left: 39%; animation-delay: 0.3s; animation-duration: 1.6s;"></div>
-    <div class="star-twinkle" style="top: 61%; left: 66%; animation-delay: 2.5s; animation-duration: 1.9s;"></div>
-    <div class="star-twinkle" style="top: 44%; left: 91%; animation-delay: 0.9s; animation-duration: 2.6s;"></div>
-    <div class="star-twinkle" style="top: 4%; left: 19%; animation-delay: 2.8s; animation-duration: 1.5s;"></div>
-    <div class="star-twinkle" style="top: 81%; left: 6%; animation-delay: 0.4s; animation-duration: 2.1s;"></div>
-    <div class="star-twinkle" style="top: 21%; left: 94%; animation-delay: 1.9s; animation-duration: 1.7s;"></div>
-    <div class="star-twinkle" style="top: 36%; left: 54%; animation-delay: 3.2s; animation-duration: 2.3s;"></div>
-    <div class="star-twinkle" style="top: 71%; left: 34%; animation-delay: 0.6s; animation-duration: 1.3s;"></div>
-    <div class="star-twinkle" style="top: 56%; left: 84%; animation-delay: 1.5s; animation-duration: 2.4s;"></div>
-    <div class="star-twinkle" style="top: 29%; left: 14%; animation-delay: 2.3s; animation-duration: 1.6s;"></div>
-    <div class="star-twinkle" style="top: 66%; left: 76%; animation-delay: 0.2s; animation-duration: 2.7s;"></div>
-    <div class="star-twinkle" style="top: 14%; left: 51%; animation-delay: 1.8s; animation-duration: 1.9s;"></div>
-    <div class="star-twinkle" style="top: 89%; left: 24%; animation-delay: 3.0s; animation-duration: 2.0s;"></div>
-    <div class="star-twinkle" style="top: 3%; left: 60%; animation-delay: 0.7s; animation-duration: 1.5s;"></div>
-    <div class="star-twinkle" style="top: 95%; left: 15%; animation-delay: 2.9s; animation-duration: 2.0s;"></div>
-    <div class="star-twinkle" style="top: 40%; left: 88%; animation-delay: 0.4s; animation-duration: 2.6s;"></div>
-    <div class="star-twinkle" style="top: 7%; left: 33%; animation-delay: 1.1s; animation-duration: 1.7s;"></div>
-    <div class="star-twinkle" style="top: 48%; left: 5%; animation-delay: 3.3s; animation-duration: 2.1s;"></div>
-    <div class="star-twinkle" style="top: 28%; left: 42%; animation-delay: 1.0s; animation-duration: 1.5s;"></div>
-    <div class="star-twinkle" style="top: 84%; left: 78%; animation-delay: 2.2s; animation-duration: 2.9s;"></div>
-    <div class="star-twinkle" style="top: 18%; left: 23%; animation-delay: 0.0s; animation-duration: 1.3s;"></div>
-    <div class="star-twinkle" style="top: 73%; left: 68%; animation-delay: 1.6s; animation-duration: 2.5s;"></div>
-    <div class="star-twinkle" style="top: 58%; left: 98%; animation-delay: 3.4s; animation-duration: 1.9s;"></div>
-    <div class="star-twinkle" style="top: 38%; left: 8%; animation-delay: 0.5s; animation-duration: 2.2s;"></div>
-    <div class="star-twinkle" style="top: 64%; left: 52%; animation-delay: 2.7s; animation-duration: 1.8s;"></div>
-    <div class="star-twinkle" style="top: 8%; left: 90%; animation-delay: 1.4s; animation-duration: 2.4s;"></div>
-    <div class="star-twinkle" style="top: 91%; left: 38%; animation-delay: 0.9s; animation-duration: 1.6s;"></div>
-    <div class="star-twinkle" style="top: 42%; left: 73%; animation-delay: 2.0s; animation-duration: 2.7s;"></div>
-    <div class="star-twinkle" style="top: 20%; left: 62%; animation-delay: 3.6s; animation-duration: 1.5s;"></div>
-    <div class="star-twinkle" style="top: 53%; left: 25%; animation-delay: 0.3s; animation-duration: 3.1s;"></div>
-    <div class="star-twinkle" style="top: 77%; left: 80%; animation-delay: 1.3s; animation-duration: 1.4s;"></div>
-    <div class="star-twinkle" style="top: 97%; left: 57%; animation-delay: 2.6s; animation-duration: 2.3s;"></div>
-    <div class="star-twinkle" style="top: 32%; left: 99%; animation-delay: 0.7s; animation-duration: 2.0s;"></div>
-
-
-    <!-- Main content container (RWD class optimization) -->
-    <!-- Max width adjusted: full width on mobile, max-w-lg on larger screens by default -->
-    <!-- Added id 'app-container' for dynamic content injection -->
-    <div id="app-container" class="w-full max-w-screen-md lg:max-w-lg my-auto py-8 px-6 glass-card rounded-2xl">
-        <!-- 這是等待 Firebase 時顯示的預設內容 -->
-        <div class="text-center py-10">
-            <h2 class="font-luxury-heading text-2xl" style="color:var(--color-gold-luxury);">
-                載入中... 聖誕老人在路上！
-            </h2>
-            <p class="mt-2 text-sm text-cream-white/70">
-                如果長時間未載入，請檢查您的網路連線。
+    <!-- 頂部區塊: Hero Section -->
+    <section id="hero" class="pt-20 pb-12 px-6 text-center">
+        <!-- 主標題 -->
+        <header class="relative animate-on-scroll" style="transition-delay: 0.1s;">
+            <h1 class="title-font text-5xl md:text-7xl font-light leading-snug tracking-wider text-shadow-lg">
+                KTV 聖誕交換禮物趴
+            </h1>
+            <!-- 標語: That's go party! -->
+            <p class="mt-4 text-lg md:text-xl uppercase font-light tracking-widest" style="color: var(--accent-color);">
+                That's go party!
             </p>
+        </header>
+
+        <!-- 快速資訊圖標區 -->
+        <div class="info-icons mt-12 grid grid-cols-3 gap-4 max-w-lg mx-auto relative animate-on-scroll" style="transition-delay: 0.3s;">
+            
+            <!-- 日期 -->
+            <div class="flex flex-col items-center justify-center p-2">
+                <svg class="svg-icon w-8 h-8 md:w-10 md:h-10" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M11.996 15h.008M11.996 12h.008M11.996 9h.008" />
+                </svg>
+                <span class="mt-2 text-sm md:text-base font-semibold">12/19 (五)</span>
+            </div>
+
+            <!-- 時間 -->
+            <div class="flex flex-col items-center justify-center p-2">
+                <svg class="svg-icon w-8 h-8 md:w-10 md:h-10" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2" />
+                </svg>
+                <span class="mt-2 text-sm md:text-base font-semibold">19:00 - 23:00</span>
+            </div>
+
+            <!-- 地點 -->
+            <div class="flex flex-col items-center justify-center p-2">
+                <svg class="svg-icon w-8 h-8 md:w-10 md:h-10" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                </svg>
+                <span class="mt-2 text-sm md:text-base font-semibold">錢櫃 中華新館</span>
+            </div>
         </div>
-    </div>
-    <div id="debug-info" class="text-xs text-cream-white/50 mt-4 text-center"></div>
+
+        <!-- 主要報名 CTA -->
+        <a href="#cta-footer" class="inline-block mt-12 px-8 py-3 outline-button rounded-full text-base tracking-widest font-bold animate-on-scroll" style="transition-delay: 0.5s;">
+            👉 前往登記表單
+        </a>
+    </section>
+
+    <!-- 規則區塊: Rules Section (卡片設計) -->
+    <section id="rules" class="py-16 px-6 relative overflow-hidden">
+        <div class="max-w-xl mx-auto p-8 rounded-xl border-2 shadow-xl animate-on-scroll" style="border-color: var(--accent-color);">
+            <header class="text-center mb-6">
+                <h2 class="text-3xl font-semibold uppercase tracking-wider" style="color: var(--accent-color);">
+                    禮物規定
+                </h2>
+            </header>
+            
+            <div class="text-center mb-6">
+                <p class="text-lg font-light mb-2">交換禮物金額範圍</p>
+                <h3 class="text-5xl font-extrabold tracking-widest title-font" style="color: var(--accent-color);">
+                    <span class="text-3xl">$</span>NT300~500
+                </h3>
+            </div>
+
+            <div class="space-y-4 text-left text-base font-light">
+                <!-- 禮物文字 -->
+                <p class="font-semibold text-center leading-relaxed">
+                    請準備一個實用又有趣的全新禮物<br>
+                    期待您準備的禮物！
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- 活動詳情區塊: Details Section -->
+    <section id="details" class="py-16 px-6">
+        <div class="max-w-xl mx-auto space-y-10 animate-on-scroll">
+            
+            <!-- 派對細節 -->
+            <div>
+                <h2 class="text-2xl font-semibold mb-3" style="color: var(--accent-color);">派對細節</h2>
+                <ul class="space-y-2 text-base font-light">
+                    <li class="flex justify-between border-b border-opacity-30 pb-1 border-[#D9C2A4]">
+                        <span>日期/時間</span>
+                        <span class="font-medium">2025/12/19 (五) 19:00 – 23:00</span>
+                    </li>
+                    <li class="flex justify-between border-b border-opacity-30 pb-1 border-[#D9C2A4]">
+                        <span>地點</span>
+                        <span class="font-medium">錢櫃 中華新館</span>
+                    </li>
+                    <li class="flex justify-between border-b border-opacity-30 pb-1 border-[#D9C2A4]">
+                        <span>人數限制</span>
+                        <span class="font-medium text-lg">8–12 位</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- 禮物與服裝 -->
+            <div class="pt-4">
+                <h2 class="text-2xl font-semibold mb-3" style="color: var(--accent-color);">禮物與服裝</h2>
+                <ul class="space-y-2 text-base font-light">
+                    <li class="flex justify-between border-b border-opacity-30 pb-1 border-[#D9C2A4]">
+                        <span>Dress Code</span>
+                        <!-- 更新 Dress Code 文字 -->
+                        <span class="font-medium">穿著紅或綠元素</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- 預估費用更新 -->
+            <div>
+                <h2 class="text-2xl font-semibold mb-3" style="color: var(--accent-color);">預估費用</h2>
+                <ul class="space-y-2 text-base font-light">
+                    <li class="flex justify-between border-b border-opacity-30 pb-1 border-[#D9C2A4]">
+                        <span class="font-bold" style="color: var(--accent-color);">費用</span>
+                        <span class="font-bold">NT$ 500 訂金 <span class="font-normal text-sm">(活動後多退少補)</span></span>
+                    </li>
+                    <!-- 新增訂金收款人資訊 -->
+                    <li class="flex justify-between">
+                        <span>訂金請付給</span>
+                        <span class="font-medium">請在 IG 群組內詢問主辦人</span>
+                    </li>
+                </ul>
+            </div>
+            
+            <!-- 地圖崁入 - 新增 -->
+            <div class="pt-8 animate-on-scroll" style="transition-delay: 0.8s;">
+                <h2 class="text-2xl font-semibold mb-3" style="color: var(--accent-color);">活動地點地圖</h2>
+                <!-- 保持 4:3 比例的響應式容器 -->
+                <div class="relative overflow-hidden rounded-xl shadow-lg" style="padding-top: 75%;">
+                    <iframe 
+                        src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3614.747081404241!2d121.50628067537676!3d25.042655877810795!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3442a90bd7343263%3A0xcf2badba7e424f99!2z6Yyi5quD5Lit6I-v5paw6aSo!5e0!3m2!1szh-TW!2stw!4v1765123777033!5m2!1szh-TW!2stw" 
+                        style="border:0;" 
+                        allowfullscreen="" 
+                        loading="lazy" 
+                        referrerpolicy="no-referrer-when-downgrade"
+                        class="absolute top-0 left-0 w-full h-full"
+                    ></iframe>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- 報名與聯絡區塊: CTA Footer -->
+    <section id="cta-footer" class="pt-12 pb-20 px-6 text-center bg-opacity-50" style="background-color: rgba(0,0,0,0.1);">
+        <!-- 標題: 登記表單 -->
+        <h2 class="text-3xl font-semibold mb-6 animate-on-scroll" style="color: var(--accent-color);">
+            登記表單
+        </h2>
+        
+        <div class="max-w-sm mx-auto space-y-4">
+            <!-- 實時表單：已更新 ACTION URL 和 INPUT NAME 以直接提交至 Google Form -->
+            <form id="registrationForm" action="https://docs.google.com/forms/d/e/1FAIpQLSfzbcq0QB0DuXLb3o5WKYIeBDxKITGD7A_YFHusJDu1ZwRbKQ/formResponse" method="POST" target="_blank" class="text-left space-y-4">
+                
+                <!-- 姓名 / 暱稱 -->
+                <div class="space-y-1">
+                    <label for="name" class="text-sm font-semibold block">姓名 / 暱稱</label>
+                    <input type="text" id="name" name="entry.1820692417" required class="w-full p-2 rounded-lg bg-[#243425] border border-gray-600 focus:border-white focus:outline-none" style="color: var(--text-color);">
+                </div>
+
+                <!-- 聯絡方式 -->
+                <div class="space-y-1">
+                    <label for="contact" class="text-sm font-semibold block">聯絡方式 (IG/Line ID)</label>
+                    <input type="text" id="contact" name="entry.1193572165" required class="w-full p-2 rounded-lg bg-[#243425] border border-gray-600 focus:border-white focus:outline-none" style="color: var(--text-color);">
+                </div>
+
+                <!-- KTV 點歌許願 (非必填) -->
+                <div class="space-y-1">
+                    <label for="song_wish" class="text-sm font-semibold block">KTV 點歌許願 (非必填)</label>
+                    <textarea id="song_wish" name="entry.441138134" rows="2" class="w-full p-2 rounded-lg bg-[#243425] border border-gray-600 focus:border-white focus:outline-none" style="color: var(--text-color);" placeholder="Ex: 五月天 - 派對動物"></textarea>
+                </div>
+                
+                <!-- 飲食限制 (非必填) -->
+                <div class="space-y-2 pt-2">
+                    <label class="text-sm font-semibold block">飲食限制 (非必填)</label>
+                    <div class="flex flex-col space-y-2 text-sm">
+                        <!-- 多選框: 不吃牛肉 (ID: 1616017926) -->
+                        <label class="flex items-center space-x-2 cursor-pointer">
+                            <input type="checkbox" name="entry.1616017926" value="我不吃牛肉" class="form-checkbox h-4 w-4 rounded" style="color: var(--accent-color); accent-color: var(--accent-color);">
+                            <span>我不吃牛肉</span>
+                        </label>
+                        <!-- 多選框: 不喝酒 (ID: 1616017926) -->
+                        <label class="flex items-center space-x-2 cursor-pointer">
+                            <input type="checkbox" name="entry.1616017926" value="我不喝酒" class="form-checkbox h-4 w-4 rounded" style="color: var(--accent-color); accent-color: var(--accent-color);">
+                            <span>我不喝酒</span>
+                        </label>
+                    </div>
+                    
+                    <!-- 其他過敏或禁忌 (文字框) -->
+                    <div class="space-y-1 pt-2">
+                        <label for="other_restrictions" class="text-sm block">其他過敏或禁忌：</label>
+                        <input type="text" id="other_restrictions" name="entry.309394316" class="w-full p-2 rounded-lg bg-[#243425] border border-gray-600 focus:border-white focus:outline-none" style="color: var(--text-color);" placeholder="Ex: 海鮮過敏/純素/不吃辣">
+                    </div>
+                </div>
+
+                <!-- 禮物狀態 (Radio Buttons) -->
+                <div class="space-y-2 pt-4">
+                    <label class="text-sm font-semibold block">禮物準備狀態</label>
+                    <div class="flex items-center space-x-6 text-sm">
+                        <!-- 單選框: 已準備 (ID: 679856916) -->
+                        <label class="flex items-center space-x-2 cursor-pointer">
+                            <input type="radio" name="entry.679856916" value="已準備" class="form-radio h-4 w-4" required style="color: var(--accent-color); accent-color: var(--accent-color);">
+                            <span>已準備</span>
+                        </label>
+                        <!-- 單選框: 未準備 (ID: 679856916) -->
+                        <label class="flex items-center space-x-2 cursor-pointer">
+                            <input type="radio" name="entry.679856916" value="未準備" class="form-radio h-4 w-4" required style="color: var(--accent-color); accent-color: var(--accent-color);">
+                            <span>未準備 (儘快準備喔!)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 提交按鈕 -->
+                <button type="submit" class="w-full mt-6 py-3 rounded-full text-lg font-bold tracking-wider outline-button bg-white text-black hover:bg-opacity-80 transition duration-300" style="background-color: var(--accent-color); color: var(--bg-color); border: none;">
+                    確認登記參加 🎁
+                </button>
+                <div class="text-center text-sm mt-4">
+                    <!-- 提示訊息 -->
+                    <p class="text-xs opacity-70">
+                        * 點擊提交後，表單將開啟新分頁，請注意確認 Google 表單的提交成功訊息。
+                    </p>
+                </div>
+            </form>
+            
+            <p class="mt-8 text-sm font-light text-opacity-80">
+                報名後請務必加入 IG 群組，當天包廂號碼將於群組內通知。
+            </p>
+            
+            <!-- IG 群組連結 (作為次要連結保留) -->
+            <a href="https://ig.me/j/AbZP3xD1ugaWGDMX/" target="_blank" class="w-full block outline-button rounded-full py-3 text-sm font-bold tracking-wider animate-on-scroll">
+                點擊加入 IG 活動群組
+            </a>
+            
+        </div>
+    </section>
+
+    <!-- 頁尾 -->
+    <footer class="py-6 px-6 text-center text-xs opacity-70">
+        <!-- 更新主辦人名單 -->
+        <p class="text-sm font-semibold tracking-wider">Kenny．Mickey．Gina．Miranda</p>
+        <p class="mt-1 text-[10px]">Made with 💖 for a classy Christmas party.</p>
+    </footer>
 
     <script>
-        // Set Tailwind config to use CSS variables
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        'charcoal': 'var(--color-bg-main)',
-                        'deep-brown': 'var(--color-bg-secondary)',
-                        'cream-white': 'var(--color-text-cream)',
-                        'luxury-gold': 'var(--color-gold-luxury)',
-                        'antique-brass': 'var(--color-brass-antique)',
-                        'danger-red': 'var(--color-danger)',
-                    },
-                    boxShadow: {
-                        'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
-                    },
-                }
-            }
-        }
-    </script>
-    <script>
-        // Application state
-        const state = {
-            currentPage: 'home', // 'home', 'form', 'success'
-            formData: {
-                paymentProof: '',
-                name: '',
-                contact: '',
-                dressCodeConfirmed: false,
-                ktvWish: '',
-                diet_noBeef: false,
-                diet_noAlcohol: false,
-                diet_vegetarian: '', // 素食類型
-                diet_other: ''
-            },
-            errorMessage: '',
-            submissionId: null
+        const observerOptions = {
+            root: null,
+            rootMargin: '0px',
+            threshold: 0.1 // 當元素 10% 進入視窗時觸發
         };
 
-        // Helper function: Render icon
-        function renderIcon(name, classes = 'w-5 h-5 inline mr-2') {
-            // Icon uses luxury gold
-            return `<i data-lucide="${name}" class="${classes}" style="color:var(--color-gold-luxury);"></i>`;
-        }
+        const observer = new IntersectionObserver((entries, observer) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    // 元素進入視窗
+                    entry.target.classList.add('visible');
+                    // 一旦動畫觸發，即可停止觀察
+                    // observer.unobserve(entry.target); 
+                } else {
+                    // 元素離開視窗 (可選擇性移除 visible 實現重複動畫，此處僅做單次進入)
+                    // entry.target.classList.remove('visible');
+                }
+            });
+        }, observerOptions);
 
-        // Helper function: Update page content
-        function updatePage() {
-            const container = document.getElementById('app-container');
-            const debugInfo = document.getElementById('debug-info');
+        // 觀察所有具備 'animate-on-scroll' 類別的元素
+        document.querySelectorAll('.animate-on-scroll').forEach(el => {
+            observer.observe(el);
+        });
 
-            // Set initial class list if it's the first render
-            if (container.classList.length === 0) {
-                 container.className = "w-full max-w-screen-md lg:max-w-lg my-auto py-8 px-6 glass-card rounded-2xl";
-            }
-            
-            container.innerHTML = '';
-            state.errorMessage = '';
-            
-            // Clear all dynamic max-width classes first
-            container.classList.remove('md:max-w-4xl', 'md:max-w-lg'); 
-
-            switch (state.currentPage) {
-                case 'home':
-                    renderHome(container);
-                    break;
-                case 'form':
-                    renderForm(container);
-                    break;
-                case 'success':
-                    renderSuccess(container);
-                    break;
-            }
-            
-            // Re-render Lucide icons
-            lucide.createIcons();
-
-            // Display debug info at the bottom for troubleshooting
-            debugInfo.innerHTML = `Auth Status: ${window.app.isSubmissionEnabled ? '<span style="color:#22c55e;">已連線 (可提交)</span>' : '<span style="color:var(--color-danger);">未連線 (無法提交)</span>'} | User ID: ${window.userId || 'N/A'}`;
-        }
-
-        // --- Page rendering logic ---
-
-        // Hero Page (Home)
-        function renderHome(container) {
-            // RWD Enhancement: Use larger max-width for Home page layout on medium/large screens
-            container.classList.add('md:max-w-4xl', 'text-center');
-
-            const isEnabled = window.app.isSubmissionEnabled;
-
-            container.innerHTML = `
-                <!-- RWD Typography: text-4xl on mobile, 5xl on medium screens, 6xl on large screens -->
-                <h1 class="font-luxury-heading text-4xl sm:text-5xl lg:text-6xl font-extrabold mb-4 pt-2" style="color:var(--color-gold-luxury); text-shadow: 1px 1px 10px rgba(0,0,0,1);">
-                    K歌聖誕禮物趴
-                </h1>
-                <!-- RWD Typography: text-lg on mobile, text-xl on larger screens -->
-                <p class="text-lg sm:text-xl mb-8 text-cream-white">
-                    2025/12/19（五）19:00–23:00｜錢櫃中華新館
-                </p>
-                
-                <!-- CTA Button -->
-                <button id="cta-button" 
-                        class="cta-button text-xl sm:text-2xl font-bold py-3 px-10 rounded-full mb-10 mx-auto" 
-                        onclick="state.currentPage='form'; updatePage();"
-                        ${!isEnabled ? 'disabled' : ''}>
-                    ${isEnabled ? '搶麥入場！' : '資料庫連線中...'}
-                </button>
-                ${!isEnabled ? '<p class="text-sm text-danger-red mb-4">資料庫仍在連線中，請稍候再點擊。</p>' : ''}
-
-
-                <!-- Party Info Area (RWD: single column on mobile, two columns on medium screens) -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-left text-cream-white mt-4">
-                    
-                    <!-- Rules Card -->
-                    <div class="p-4 glass-card rounded-xl">
-                        <!-- RWD Typography: text-base on mobile, text-lg on larger screens -->
-                        <h2 class="font-luxury-heading text-base sm:text-lg font-semibold mb-2" style="color:var(--color-gold-luxury);">
-                            ${renderIcon('user-check', 'w-4 h-4 inline mr-1')}名額與費用
-                        </h2>
-                        <p class="mb-2 text-sm sm:text-base">名額：8–12 位</p>
-                        <p class="text-sm sm:text-base">費用：NT$ 500 訂金 (活動後多退少補)</p>
-                        <p class="mt-2 text-xs sm:text-sm" style="color:var(--color-gold-luxury);">* 請先付款再填寫報名表。</p>
-                    </div>
-
-                    <!-- Gift and Dress Card -->
-                    <div class="p-4 glass-card rounded-xl">
-                        <!-- RWD Typography: text-base on mobile, text-lg on larger screens -->
-                        <h2 class="font-luxury-heading text-base sm:text-lg font-semibold mb-2" style="color:var(--color-gold-luxury);">
-                            ${renderIcon('gift', 'w-4 h-4 inline mr-1')}禮物與服裝
-                        </h2>
-                        <p class="mb-2 text-sm sm:text-base"><strong>Dress Code:</strong> 穿著<strong style="color:var(--color-gold-luxury);">紅</strong>或<strong style="color:var(--color-brass-antique);">綠</strong>元素。</p>
-                        <p class="text-sm sm:text-base"><strong>交換禮物:</strong> NT$ 300–500，實用性取向。</p>
-                    </div>
-                </div>
-            `;
-        }
-
-        // Form Page (Form)
-        function renderForm(container) {
-            // RWD Enhancement: Revert to a smaller max width for forms
-            container.classList.add('md:max-w-lg');
-            
-            const isEnabled = window.app.isSubmissionEnabled;
-
-            container.innerHTML = `
-                <!-- RWD Typography: text-2xl on mobile, 3xl on larger screens -->
-                <h2 class="font-luxury-heading text-2xl sm:text-3xl font-bold mb-6 text-center" style="color:var(--color-gold-luxury);">
-                    ${renderIcon('clipboard-list')}欲參加者，敬請填寫下方報名表
-                </h2>
-                ${state.errorMessage ? `<div class="p-3 mb-4 rounded-lg text-sm text-center" style="background-color:var(--color-danger); color: var(--color-text-cream);">${state.errorMessage}</div>` : ''}
-                ${!isEnabled ? '<div class="p-3 mb-4 rounded-lg text-sm text-center bg-yellow-600/50 text-cream-white">🚨 注意：資料庫連線不穩定，報名表送出可能失敗。</div>' : ''}
-
-
-                <form id="registration-form" onsubmit="event.preventDefault(); submitForm();">
-                    
-                    <!-- Step 1: Deposit Payment Card -->
-                    <div class="p-6 mb-8 rounded-xl glass-card border-2" style="border-color:var(--color-gold-luxury);">
-                        <!-- RWD Typography: text-lg on mobile, 2xl on larger screens -->
-                        <h3 class="font-luxury-heading text-lg sm:text-xl font-bold mb-4" style="color:var(--color-gold-luxury);">
-                            ${renderIcon('credit-card')}步驟一：預付活動訂金
-                        </h3>
-                        <div class="text-center mb-4">
-                            <!-- RWD Typography: 4xl on mobile, 5xl on larger screens -->
-                            <span class="font-luxury-heading text-4xl sm:text-5xl font-extrabold" style="color:var(--color-gold-luxury); text-shadow: 2px 2px 5px rgba(0,0,0,0.7);">
-                                NT$ 500
-                            </span>
-                        </div>
-                        <p class="text-cream-white mb-2 text-sm">（請先完成付款，再填寫下方表單！）</p>
-                        <p class="mt-2 text-xs sm:text-sm" style="color:var(--color-gold-luxury);">* 溫馨提示：訂金將於活動結束後依實際消費計算，採多退少補原則。</p>
-                        <!-- Payment info placeholder -->
-                        <p class="text-xs mt-3 text-cream-white/70">
-                            支付方式：LINE Pay / 銀行轉帳 (請向主辦人確認帳號資訊)
-                        </p>
-                    </div>
-
-                    <!-- Step 2: Registration Data -->
-                    <div class="space-y-6">
-                        <!-- RWD Typography: text-base on mobile, text-lg on larger screens -->
-                        <div class="font-luxury-heading text-base sm:text-lg font-semibold" style="color:var(--color-brass-antique);">
-                            ${renderIcon('user-circle')}報名者資料
-                        </div>
-                        
-                        <!-- Required Fields (Inputs are w-full by default, which is good for RWD) -->
-                        <div>
-                            <label for="paymentProof" class="block text-sm font-medium text-cream-white/80 mb-1">付款證明後五碼/暱稱 <span style="color:var(--color-danger);">*</span></label>
-                            <input type="text" id="paymentProof" name="paymentProof" value="${state.formData.paymentProof}" oninput="state.formData.paymentProof = this.value" class="glass-input w-full p-2" placeholder="請填寫轉帳後五碼或 LINE Pay 暱稱" required>
-                        </div>
-                        <div>
-                            <label for="name" class="block text-sm font-medium text-cream-white/80 mb-1">姓名/暱稱 <span style="color:var(--color-danger);">*</span></label>
-                            <input type="text" id="name" name="name" value="${state.formData.name}" oninput="state.formData.name = this.value" class="glass-input w-full p-2" placeholder="派對上希望被稱呼的名字" required>
-                        </div>
-                        <div>
-                            <label for="contact" class="block text-sm font-medium text-cream-white/80 mb-1">聯絡方式 (LINE ID/Instrange帳號) <span style="color:var(--color-danger);">*</span></label>
-                            <input type="text" id="contact" name="contact" value="${state.formData.contact}" oninput="state.formData.contact = this.value" class="glass-input w-full p-2" placeholder="方便主辦人聯繫的 LINE ID 或 IG 帳號" required>
-                        </div>
-
-                        <!-- Dress Code Confirmation -->
-                        <div class="flex items-center pt-2">
-                            <input type="checkbox" id="dressCodeConfirmed" name="dressCodeConfirmed" ${state.formData.dressCodeConfirmed ? 'checked' : ''} onchange="state.formData.dressCodeConfirmed = this.checked" class="glass-check w-4 h-4 mr-3 cursor-pointer">
-                            <label for="dressCodeConfirmed" class="text-sm font-medium" style="color:var(--color-gold-luxury);">
-                                ${renderIcon('check-circle', 'w-4 h-4 inline mr-1')}我已確認並會遵守「紅或綠」服裝規定 <span style="color:var(--color-danger);">*</span>
-                            </label>
-                        </div>
-
-                        <hr class="border-t border-white/20 my-6">
-
-                        <!-- Optional: KTV Wish -->
-                        <div>
-                            <label for="ktvWish" class="block text-sm font-medium text-cream-white/80 mb-1">
-                                ${renderIcon('music')} KTV 點歌許願 (選填)
-                            </label>
-                            <input type="text" id="ktvWish" name="ktvWish" value="${state.formData.ktvWish}" oninput="state.formData.ktvWish = this.value" class="glass-input w-full p-2" placeholder="想聽或想唱的歌曲名稱">
-                        </div>
-
-                        <!-- Optional: Dietary Preferences -->
-                        <div class="pt-2">
-                            <label class="block text-sm font-medium text-cream-white/80 mb-2 font-luxury-heading">
-                                ${renderIcon('utensils')} 餐飲偏好 (請勾選，點餐會參考)
-                            </label>
-                            <div class="space-y-2">
-                                <label class="flex items-center text-sm text-cream-white">
-                                    <input type="checkbox" name="diet" value="noBeef" ${state.formData.diet_noBeef ? 'checked' : ''} onchange="state.formData.diet_noBeef = this.checked" class="glass-check w-4 h-4 mr-2 cursor-pointer">
-                                    不吃牛
-                                </label>
-                                <label class="flex items-center text-sm text-cream-white">
-                                    <input type="checkbox" name="diet" value="noAlcohol" ${state.formData.diet_noAlcohol ? 'checked' : ''} onchange="state.formData.diet_noAlcohol = this.checked" class="glass-check w-4 h-4 mr-2 cursor-pointer">
-                                    不喝酒
-                                </label>
-                                <div class="ml-6">
-                                    <label for="diet_vegetarian" class="block text-sm font-medium text-cream-white/70 mb-1 mt-2">素食類型 (若為素食者)</label>
-                                    <input type="text" id="diet_vegetarian" name="diet_vegetarian" value="${state.formData.diet_vegetarian}" oninput="state.formData.diet_vegetarian = this.value" class="glass-input w-full p-2 text-xs" placeholder="例如：蛋奶素/鍋邊素/全素">
-                                </div>
-                                <div>
-                                    <label for="diet_other" class="block text-sm font-medium text-cream-white/70 mb-1 mt-2">其他過敏/禁忌 (開放欄位)</label>
-                                    <input type="text" id="diet_other" name="diet_other" value="${state.formData.diet_other}" oninput="state.formData.diet_other = this.value" class="glass-input w-full p-2 text-xs" placeholder="例如：花生過敏、不吃海鮮等">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <p class="text-xs text-center mt-6 mb-2 text-cream-white/70">
-                        （填寫完成後，請留意跳出的頁面，內含當天進場的 IG 群組連結喔！）
-                    </p>
-
-                    <!-- RWD Typography: text-lg on mobile, xl on larger screens -->
-                    <button type="submit" 
-                            class="cta-button w-full text-lg sm:text-xl font-bold py-3 px-10 rounded-full mt-6"
-                            ${!isEnabled ? 'disabled' : ''}>
-                        送出報名
-                    </button>
-                    ${!isEnabled ? '<p class="text-sm text-danger-red mt-2 text-center">** 資料庫未連線，無法送出報名 **</p>' : ''}
-
-                </form>
-            `;
-        }
-
-        // Success Page (Success)
-        function renderSuccess(container) {
-            // RWD Enhancement: Revert to a smaller max width for focus
-            container.classList.add('md:max-w-lg');
-
-            // Use the new IG link
-            const igLink = "https://ig.me/j/AbZP3xD1ugaWGDMX/";
-
-            container.innerHTML = `
-                <!-- RWD Typography: 3xl on mobile, 4xl on larger screens -->
-                <h2 class="font-luxury-heading text-3xl sm:text-4xl font-extrabold mb-6" style="color:var(--color-gold-luxury); text-shadow: 2px 2px 5px rgba(0,0,0,0.7);">
-                    🎉 恭喜！搶麥入場成功！
-                </h2>
-                <p class="text-lg sm:text-xl mb-8 text-cream-white">
-                    您的名額已保留。我們非常期待與您在 KTV 狂歡！
-                </p>
-                <div class="text-xs text-cream-white/70 mb-4">
-                    您的報名編號 (用於驗證)：${state.submissionId || 'N/A (請截圖此頁面)'}
-                </div>
-
-
-                <!-- IG Group CTA: RWD Typography: text-xl on mobile, 2xl on larger screens -->
-                <a href="${igLink}" target="_blank" class="block text-xl sm:text-2xl font-bold py-4 px-10 rounded-full mb-10 mx-auto" style="background-color:var(--color-gold-luxury); color:var(--color-bg-main); border: 3px solid var(--color-brass-antique); transition: all 0.3s ease;">
-                    ${renderIcon('instagram', 'w-6 h-6 inline mr-3')}立即加入 IG 派對群組
-                </a>
-                <p class="text-sm text-cream-white/80 mb-8">
-                    （請務必加入群組，以便聯繫、發布包廂號碼及突發狀況通知。）
-                </p>
-
-                <!-- Location Info -->
-                <div class="glass-card p-4 rounded-xl mb-8 text-left text-cream-white">
-                    <h3 class="font-luxury-heading text-lg font-semibold mb-3" style="color:var(--color-gold-luxury);">
-                        ${renderIcon('map-pin')}活動地點：錢櫃中華新館
-                    </h3>
-                    <!-- Map Embed (Responsive Aspect Ratio) -->
-                    <div class="aspect-w-16 aspect-h-9 w-full rounded-lg overflow-hidden">
-                        <iframe
-                          src="https://maps.google.com/?cid=14928216406343438233&hl=zh-TW&output=embed"
-                          width="100%"
-                          height="300"
-                          style="border:0; border-radius: 10px;"
-                          allowfullscreen=""
-                          loading="lazy"
-                          referrerpolicy="no-referrer-when-downgrade"
-                        ></iframe>
-                    </div>
-                </div>
-            `;
-        }
-
-        // Form submission logic
-        async function submitForm() {
-            const form = document.getElementById('registration-form');
-            if (!window.app.isSubmissionEnabled) {
-                 state.errorMessage = '🚨 資料庫尚未連線，無法提交報名！請稍後再試。';
-                 updatePage();
-                 return;
-            }
-
-            // Check if all required fields are filled and dress code is confirmed
-            if (!form.checkValidity() || !state.formData.dressCodeConfirmed) {
-                state.errorMessage = '請填寫所有必填欄位並確認 Dress Code 規定！';
-                updatePage();
-                return;
-            }
-
-            try {
-                // Show loading state (optional: disable button)
-                const submitButton = form.querySelector('button[type="submit"]');
-                submitButton.textContent = '提交中...';
-                submitButton.disabled = true;
-
-                // Clean and prepare data to be saved
-                const dataToSave = {
-                    name: state.formData.name,
-                    contact: state.formData.contact,
-                    paymentProof: state.formData.paymentProof,
-                    dressCodeConfirmed: state.formData.dressCodeConfirmed,
-                    ktvWish: state.formData.ktvWish || '無',
-                    giftValue: 'NT$ 300–500', // Save the current gift value
-                    diet: {
-                        noBeef: state.formData.diet_noBeef,
-                        noAlcohol: state.formData.diet_noAlcohol,
-                        vegetarian: state.formData.diet_vegetarian || '無',
-                        other: state.formData.diet_other || '無'
-                    }
-                };
-
-                const submissionId = await window.firebase.saveRegistration(dataToSave);
-                state.submissionId = submissionId;
-                state.currentPage = 'success';
-                updatePage();
-
-            } catch (error) {
-                console.error("Submission failed:", error);
-                // Re-enable button and reset text
-                const submitButton = form.querySelector('button[type="submit"]');
-                submitButton.textContent = '送出報名';
-                submitButton.disabled = false;
-                
-                state.errorMessage = '報名失敗，可能原因：Firebase連線問題或網路異常。';
-                updatePage();
-            }
-        }
+        // 確保 Hero 區塊的元素在頁面載入時就觸發動畫
+        document.addEventListener('DOMContentLoaded', () => {
+             document.querySelectorAll('#hero .animate-on-scroll').forEach(el => {
+                el.classList.add('visible');
+            });
+        });
     </script>
 </body>
 </html>
